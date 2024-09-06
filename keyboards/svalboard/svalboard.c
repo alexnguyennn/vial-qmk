@@ -40,7 +40,7 @@ const char *yes_or_no(int flag) {
     }
 }
 
-const uint16_t dpi_choices[] = { 200, 400, 800, 1200, 1600, 2400 }; // If we need more, add them.
+const uint16_t dpi_choices[] = {200, 400, 800, 1200, 1600, 2400, 2800, 3200, 3600, 4000, 4400, 4800}; // If we need more, add them.
 #define DPI_CHOICES_LENGTH (sizeof(dpi_choices)/sizeof(dpi_choices[0]))
 
 void output_keyboard_info(void) {
