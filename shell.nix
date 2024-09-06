@@ -1,13 +1,10 @@
 let
   # We specify sources via Niv: use "niv update nixpkgs" to update nixpkgs, for example.
   sources = import ./util/nix/sources.nix { };
-in
-# However, if you want to override Niv's inputs, this will let you do that.
-{ pkgs ? import sources.nixpkgs { }
-, poetry2nix ? pkgs.callPackage (import sources.poetry2nix) { }
-, avr ? true
-, arm ? true
-, teensy ? true }:
+  # However, if you want to override Niv's inputs, this will let you do that.
+in { pkgs ? import sources.nixpkgs { }
+, poetry2nix ? pkgs.callPackage (import sources.poetry2nix) { }, avr ? true
+, arm ? true, teensy ? true }:
 with pkgs;
 let
   avrlibc = pkgsCross.avr.libcCross;
@@ -29,7 +26,7 @@ let
   pythonEnv = poetry2nix.mkPoetryEnv {
     projectDir = ./util/nix;
     overrides = poetry2nix.overrides.withDefaults (self: super: {
-      qmk = super.qmk.overridePythonAttrs(old: {
+      qmk = super.qmk.overridePythonAttrs (old: {
         # Allow QMK CLI to run "qmk" as a subprocess (the wrapper changes
         # $PATH and breaks these invocations).
         dontWrapPythonPrograms = true;
@@ -46,20 +43,30 @@ let
               "[Path(sys.executable).as_posix(), Path(sys.argv[0]).as_posix()"
         '';
       });
+
+      keymap-drawer = super.poetry2nix.mkPoetryApplication {
+        projectDir = keymap-drawer-src;
+
+        overrides = super.poetry2nix.defaultPoetryOverrides.extend
+          (self: super: {
+            deptry = super.deptry.overridePythonAttrs (old: {
+              buildInputs = (old.buildInputs or [ ]) ++ [ super.poetry ];
+            });
+          });
+      };
     });
   };
-in
-mkShell {
+in mkShell {
   name = "qmk-firmware";
 
-  buildInputs = [ clang-tools_11 dfu-programmer dfu-util diffutils git pythonEnv niv ]
+  buildInputs =
+    [ clang-tools_11 dfu-programmer dfu-util diffutils git pythonEnv niv ]
     ++ lib.optional avr [
       pkgsCross.avr.buildPackages.binutils
       pkgsCross.avr.buildPackages.gcc8
       avrlibc
       avrdude
-    ]
-    ++ lib.optional arm [ gcc-arm-embedded ]
+    ] ++ lib.optional arm [ gcc-arm-embedded ]
     ++ lib.optional teensy [ teensy-loader-cli ];
 
   AVR_CFLAGS = lib.optional avr avr_incflags;
