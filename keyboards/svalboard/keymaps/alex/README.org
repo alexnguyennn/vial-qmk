@@ -9,5 +9,10 @@
   - Svalboard uses an RP2040 microcontroller which lets you flash firmware by drag-and-drop to an onboard flash drive.  After loading, it immediately reboots and comes up as a Svalboard, and the flash drive disappears.
 Double-tap the RESET button on the bottom of the case to enter bootloader mode.  An “RPI-RP2” flash drive will show up.
 You’ll need to flash both sides when updating FW. To do this, each side will need to have its Master port connected to the host PC, in turn.
+*** clangd LSP completions
+    - use =bear= to generate a =compiled_commands.json=
+    - =nix-shell=
+    - =bear -- qmk compile -kb svalboard/trackball/pmw3389/left -km alex=
+
 ** Turning off achordion
 - look for Toggle ACH button in Vial

@@ -56,6 +56,7 @@
             # hid-listen # For keylogging
             qmk
             # vial # not on darwin
+            bear
           ];
 
           shellHook = let
