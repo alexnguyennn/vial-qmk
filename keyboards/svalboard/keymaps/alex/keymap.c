@@ -22,6 +22,44 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include <stdbool.h>
 #include <stdint.h>
 #include "svalboard.h"
+#include "vial.h"
+
+// Tap Dance declarations
+enum {
+    TD_SPACE_ALLT_L6,
+};
+
+// Tap Dance state
+static uint8_t dance_step     = 0;
+static bool    is_hold_action = false;
+
+void vial_tap_dance_on_dance(uint8_t index, bool pressed, bool interrupted, uint8_t step) {
+    if (index == TD_SPACE_ALLT_L6) {
+        dance_step     = step;
+        is_hold_action = !interrupted && pressed;
+
+        if (pressed) {
+            if (step == 1) {
+                if (interrupted) {
+                    // Single tap then hold
+                    register_mods(MOD_HYPR);
+                    layer_on(6);
+                } else if (!is_hold_action) {
+                    // Single tap
+                    tap_code(KC_SPACE);
+                } else {
+                    // Single hold
+                    register_mods(MOD_HYPR);
+                }
+            }
+        } else {
+            if (step == 1) {
+                unregister_mods(MOD_HYPR);
+                layer_off(6);
+            }
+        }
+    }
+}
 
 #define LAYER_COLOR(name, color) rgblight_segment_t const (name)[] = RGBLIGHT_LAYER_SEGMENTS({0, 2, color})
 
