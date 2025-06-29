@@ -16,6 +16,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
 #include "../keymap_support.c"
+#include "../keymap_support.h"
 #include "keycodes.h"
 #include "quantum_keycodes.h"
 #include QMK_KEYBOARD_H
@@ -23,41 +24,30 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include <stdint.h>
 #include "svalboard.h"
 #include "vial.h"
+#define RANGE_START SV_SAFE_RANGE
 
-// Tap Dance declarations
-enum {
-    TD_SPACE_ALLT_L6,
-};
-// Tap Dance state
-static uint8_t dance_step     = 0;
-static bool    is_hold_action = false;
+enum custom_keycodes { SPACE_HYPR_L5 = RANGE_START };
 
-void vial_tap_dance_on_dance(uint8_t index, bool pressed, bool interrupted, uint8_t step) {
-    if (index == TD_SPACE_ALLT_L6) {
-        dance_step     = step;
-        is_hold_action = !interrupted && pressed;
-
-        if (pressed) {
-            if (step == 1) {
-                if (interrupted) {
-                    // Single tap then hold
-                    register_mods(MOD_HYPR);
-                    layer_on(6);
-                } else if (!is_hold_action) {
-                    // Single tap
+bool process_record_user(uint16_t keycode, keyrecord_t* record) {
+    switch (keycode) {
+        case SPACE_HYPR_L5:
+            if (record->event.pressed) {
+                if (record->tap.count && !record->tap.interrupted) {
+                    // Tapped
                     tap_code(KC_SPACE);
                 } else {
-                    // Single hold
+                    // Held
                     register_mods(MOD_HYPR);
+                    layer_on(5);
                 }
-            }
-        } else {
-            if (step == 1) {
+            } else {
+                // Released
                 unregister_mods(MOD_HYPR);
-                layer_off(6);
+                layer_off(5);
             }
-        }
+            return false;
     }
+    return true;
 }
 
 #define LAYER_COLOR(name, color) rgblight_segment_t const (name)[] = RGBLIGHT_LAYER_SEGMENTS({0, 2, color})
@@ -119,6 +109,7 @@ enum layer {
     MBO = MH_AUTO_BUTTONS_LAYER,
 };
 
+// clang-format off
 const uint16_t PROGMEM keymaps[DYNAMIC_KEYMAP_LAYER_COUNT][MATRIX_ROWS][MATRIX_COLS] = {
     [NORMAL] = LAYOUT(
         /*Center           North           East            South           West*/
@@ -134,7 +125,7 @@ const uint16_t PROGMEM keymaps[DYNAMIC_KEYMAP_LAYER_COUNT][MATRIX_ROWS][MATRIX_C
         /*L4*/ KC_A,            KC_Q,           KC_LBRC,        KC_Z,           KC_DEL, XXXXXXX,
 
         /*Down                  Inner (pad)     Upper (Mode)    O.Upper (nail)  OL (knuckle) Pushthrough*/
-        /*RT*/ MO(NAS),         KC_SPACE,       TO(FUNC),       KC_BSPC,        KC_LALT,     TG(NAS),
+        /*RT*/ MO(NAS),         SPACE_HYPR_L5,       TO(FUNC),       KC_BSPC,        KC_LALT,     TG(NAS),
         /*LT*/ KC_LSFT,         KC_ENTER,       TO(NORMAL),          KC_TAB,         KC_LCTL,     KC_CAPS
         ),
 
@@ -222,6 +213,7 @@ const uint16_t PROGMEM keymaps[DYNAMIC_KEYMAP_LAYER_COUNT][MATRIX_ROWS][MATRIX_C
         )
 
 };
+// clang-format on
 
 bool achordion_chord(uint16_t tap_hold_keycode, keyrecord_t* tap_hold_record,
                      uint16_t other_keycode, keyrecord_t* other_record) {
