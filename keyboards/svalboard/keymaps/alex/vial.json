@@ -82,14 +82,29 @@
         "name": "SV_SNIPER_5"
       },
       {
-        "shortName": "Scroll\nLeft\nHold",
-        "title": "Hold to make the left pointing device scroll",
-        "name": "SV_LEFT_SCROLL_HOLD"
+        "shortName": "Scroll\nToggle\nHold",
+        "title": "Hold to toggle the pointer's scroll status.",
+        "name": "SV_SCROLL_HOLD"
       },
       {
-        "shortName": "Scroll\nRight\nHold",
-        "title": "Hold to make the right pointing device scroll",
-        "name": "SV_RIGHT_SCROLL_HOLD"
+        "shortName": "Scroll\nToggle",
+        "title": "Toggle the pointer's scroll status.",
+        "name": "SV_SCROLL_TOGGLE"
+      },
+      {
+	"shortName": "Output\nStatus",
+	"title": "Output the current internal state of the keyboard.",
+	"name": "SV_OUTPUT_STATUS"
+      },
+      {
+        "shortName": "AutoMouse\nToggle",
+        "title": "Toggle Auto Mouse layer activation.",
+        "name": "SV_TOGGLE_AUTOMOUSE"
+      },
+     {
+        "shortName": "Custom Alex",
+        "title": "testing custom keycodes",
+        "name": "SPACE_HYPR_L5"
       }
     ],
     "layouts": {
@@ -104,3 +119,4 @@
         [{"x":7.4,"w":2},"0,4",{"x":0.1},"0,2",{"x":0.1,"w":1.5},"0,0",{"x":0.8,"w":1.5},"5,0",{"x":0.1},"5,2",{"x":0.1,"w":2},"5,4"]    ]
     }
 }
+
