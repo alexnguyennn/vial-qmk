@@ -54,14 +54,14 @@
       "SGUI_T(KC_D)",
       "KC_NO",
       "KC_NO",
-      "LT6(KC_BSLASH)"
+      "ALL_T(KC_BSLASH)"
     ],
     [
       "C_S_T(KC_J)",
       "SGUI_T(KC_K)",
       "KC_NO",
       "KC_NO",
-      "LT6(KC_BSLASH)"
+      "ALL_T(KC_BSLASH)"
     ],
     [
       "SGUI_T(KC_D)",
@@ -762,7 +762,7 @@
       "MO(5)",
       "KC_NO",
       "KC_NO",
-      200
+      105
     ],
     [
       "KC_NO",
@@ -1087,7 +1087,7 @@
       200
     ]
   ],
-  "uid": 5199957870438586395,
+  "uid": 5199957870438586000,
   "version": 1,
   "via_protocol": 9,
   "vial_protocol": 6,
@@ -1096,7 +1096,7 @@
       [
         "LT6(KC_TAB)",
         "LT2(KC_GRAVE)",
-        "TD(3)",
+        "LT5(KC_SPACE)",
         "LT4(KC_BSPACE)",
         "TO(0)",
         "KC_NO"
@@ -1138,7 +1138,7 @@
         "LT2(KC_DELETE)",
         "LT5(KC_ESCAPE)",
         "LT4(KC_ENTER)",
-        "TD(2)",
+        "USER19",
         "KC_NO"
       ],
       [
