@@ -33,14 +33,74 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 // Define the keycode. The "KC_0" is an arbitrary placeholder that is never sent.
 #define HYPR_BSLSH ALL_T(KC_BACKSLASH)
+#define ALT_C LALT_T(KC_C)
 #define CTL_SFT LCTL_T(KC_0)
 
 enum custom_keycodes { SPACE_HYPR_L5 = RANGE_START };
 
-// Static variables for double hold detection
-static uint16_t hypr_bslsh_last_hold_time     = 0;
-static bool     hypr_bslsh_double_hold_active = false;
-#define DOUBLE_HOLD_TIMEOUT 500 // milliseconds
+// Double hold functionality
+typedef struct {
+    uint16_t last_hold_time;
+    bool     double_hold_active;
+} double_hold_state_t;
+
+#define DOUBLE_HOLD_TIMEOUT 400 // milliseconds
+
+// Generic function to handle double hold behavior
+// Returns true if QMK should continue with default processing, false if handled
+bool process_double_hold_key(uint16_t keycode, keyrecord_t* record, double_hold_state_t* state, uint16_t tap_keycode, uint8_t layer, uint8_t mod, uint16_t timeout) {
+    if (record->tap.count > 0) {
+        if (record->tap.count == 1) { // Single tap
+            if (record->event.pressed) {
+                tap_code(tap_keycode);
+            }
+        } else { // Tap + hold
+            if (record->event.pressed) {
+                register_mods(mod);
+                layer_on(layer);
+            } else {
+                layer_off(layer);
+                unregister_mods(mod);
+            }
+        }
+        return false; // Skip default handling for tap/tap+hold
+    } else {
+        // Handle hold and double hold
+        if (record->event.pressed) {
+            uint16_t current_time = timer_read();
+            // Check if this is a double hold (hold within timeout of previous hold)
+            if (current_time - state->last_hold_time < timeout) {
+                // Double hold detected - activate mod + layer
+                register_mods(mod);
+                layer_on(layer);
+                state->double_hold_active = true;
+                return false; // Skip default handling
+            } else {
+                // Single hold - update timestamp and use default behavior
+                state->last_hold_time     = current_time;
+                state->double_hold_active = false;
+                return true; // Continue with default mod-tap behavior
+            }
+        } else {
+            // Key released
+            if (state->double_hold_active) {
+                // Clean up double hold state
+                layer_off(layer);
+                unregister_mods(mod);
+                state->double_hold_active = false;
+                return false; // Skip default handling
+            } else {
+                // Update timestamp for potential future double hold
+                state->last_hold_time = timer_read();
+                return true; // Continue with default behavior
+            }
+        }
+    }
+}
+
+// State tracking for keys that use double hold functionality
+static double_hold_state_t hypr_bslsh_state = {0, false};
+static double_hold_state_t alt_c_state      = {0, false};
 
 bool process_record_user(uint16_t keycode, keyrecord_t* record) {
     switch (keycode) {
@@ -57,53 +117,9 @@ bool process_record_user(uint16_t keycode, keyrecord_t* record) {
         // * on tap + hold:  hypr + layer 4
         // * on double hold: hypr + layer 4
         case HYPR_BSLSH:
-            if (record->tap.count > 0) {
-                if (record->tap.count == 1) { // Single tap.
-                    if (record->event.pressed) {
-                        tap_code(KC_BACKSLASH);
-                    }
-                } else { // Tap + hold.
-                    if (record->event.pressed) {
-                        register_mods(MOD_HYPR);
-                        layer_on(4);
-                    } else {
-                        layer_off(4);
-                        unregister_mods(MOD_HYPR);
-                    }
-                }
-                return false; // Skip default handling if it's a tap/tap+hold
-            } else {
-                // Handle hold and double hold
-                if (record->event.pressed) {
-                    uint16_t current_time = timer_read();
-                    // Check if this is a double hold (hold within timeout of previous hold)
-                    if (current_time - hypr_bslsh_last_hold_time < DOUBLE_HOLD_TIMEOUT) {
-                        // Double hold detected - activate Hyper + layer 4
-                        register_mods(MOD_HYPR);
-                        layer_on(4);
-                        hypr_bslsh_double_hold_active = true;
-                        return false; // Skip default handling
-                    } else {
-                        // Single hold - update timestamp and use default behavior
-                        hypr_bslsh_last_hold_time     = current_time;
-                        hypr_bslsh_double_hold_active = false;
-                        return true; // Continue with default mod-tap behavior
-                    }
-                } else {
-                    // Key released
-                    if (hypr_bslsh_double_hold_active) {
-                        // Clean up double hold state
-                        layer_off(4);
-                        unregister_mods(MOD_HYPR);
-                        hypr_bslsh_double_hold_active = false;
-                        return false; // Skip default handling
-                    } else {
-                        // Update timestamp for potential future double hold
-                        hypr_bslsh_last_hold_time = timer_read();
-                        return true; // Continue with default behavior
-                    }
-                }
-            }
+            return process_double_hold_key(keycode, record, &hypr_bslsh_state, KC_BACKSLASH, 4, MOD_HYPR, DOUBLE_HOLD_TIMEOUT);
+        case ALT_C:
+            return process_double_hold_key(keycode, record, &alt_c_state, KC_C, 4, MOD_LALT, DOUBLE_HOLD_TIMEOUT);
         default:
             return true;
     }
