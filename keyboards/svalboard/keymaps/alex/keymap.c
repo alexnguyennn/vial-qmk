@@ -37,6 +37,11 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 enum custom_keycodes { SPACE_HYPR_L5 = RANGE_START };
 
+// Static variables for double hold detection
+static uint16_t hypr_bslsh_last_hold_time     = 0;
+static bool     hypr_bslsh_double_hold_active = false;
+#define DOUBLE_HOLD_TIMEOUT 500 // milliseconds
+
 bool process_record_user(uint16_t keycode, keyrecord_t* record) {
     switch (keycode) {
         case SPACE_HYPR_L5:
@@ -45,31 +50,16 @@ bool process_record_user(uint16_t keycode, keyrecord_t* record) {
                 // Send the string "hello" when the key is pressed
                 send_string("hello");
                 return false;
-                // if (record->tap.count && !record->tap.interrupted) {
-                //     // Tapped
-                //     tap_code(KC_SPACE);
-                // } else {
-                //     // Held
-                //     register_mods(MOD_HYPR);
-                //     layer_on(5);
-                // }
-                // } else {
-                //     // Released
-                //     unregister_mods(MOD_HYPR);
-                //     layer_off(5);
-                // }
-                // return false;
             }
         // Implements:
-        // * on tap:         one-shift Shift
-        // * on hold:        Ctrl
-        // * on tap + hold:  Shift
+        // * on tap:         one backslash
+        // * on hold:        hypr
+        // * on tap + hold:  hypr + layer 4
+        // * on double hold: hypr + layer 4
         case HYPR_BSLSH:
             if (record->tap.count > 0) {
                 if (record->tap.count == 1) { // Single tap.
                     if (record->event.pressed) {
-                        // add_oneshot_mods(MOD_BIT_LSHIFT);
-                        // send_string("hello");
                         tap_code(KC_BACKSLASH);
                     }
                 } else { // Tap + hold.
@@ -77,14 +67,43 @@ bool process_record_user(uint16_t keycode, keyrecord_t* record) {
                         register_mods(MOD_HYPR);
                         layer_on(4);
                     } else {
-                        // unregister_mods(MOD_BIT_LSHIFT);
                         layer_off(4);
                         unregister_mods(MOD_HYPR);
                     }
                 }
                 return false; // Skip default handling if it's a tap/tap+hold
+            } else {
+                // Handle hold and double hold
+                if (record->event.pressed) {
+                    uint16_t current_time = timer_read();
+                    // Check if this is a double hold (hold within timeout of previous hold)
+                    if (current_time - hypr_bslsh_last_hold_time < DOUBLE_HOLD_TIMEOUT) {
+                        // Double hold detected - activate Hyper + layer 4
+                        register_mods(MOD_HYPR);
+                        layer_on(4);
+                        hypr_bslsh_double_hold_active = true;
+                        return false; // Skip default handling
+                    } else {
+                        // Single hold - update timestamp and use default behavior
+                        hypr_bslsh_last_hold_time     = current_time;
+                        hypr_bslsh_double_hold_active = false;
+                        return true; // Continue with default mod-tap behavior
+                    }
+                } else {
+                    // Key released
+                    if (hypr_bslsh_double_hold_active) {
+                        // Clean up double hold state
+                        layer_off(4);
+                        unregister_mods(MOD_HYPR);
+                        hypr_bslsh_double_hold_active = false;
+                        return false; // Skip default handling
+                    } else {
+                        // Update timestamp for potential future double hold
+                        hypr_bslsh_last_hold_time = timer_read();
+                        return true; // Continue with default behavior
+                    }
+                }
             }
-            return true; // Continue default handling.
         default:
             return true;
     }
