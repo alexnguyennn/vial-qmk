@@ -41,23 +41,41 @@ enum custom_keycodes { SPACE_HYPR_L5 = RANGE_START };
 // Double hold functionality
 typedef struct {
     uint16_t last_hold_time;
+    uint16_t last_tap_time;
     bool     double_hold_active;
+    bool     waiting_for_double_tap;
 } double_hold_state_t;
 
 #define DOUBLE_HOLD_TIMEOUT 400 // milliseconds
+#define DOUBLE_TAP_TIMEOUT 200  // milliseconds
 
-// Generic function to handle double hold behavior
+// Generic function to handle double hold and double tap behavior
 // Returns true if QMK should continue with default processing, false if handled
-bool process_double_hold_key(uint16_t keycode, keyrecord_t* record, double_hold_state_t* state, uint16_t tap_keycode, uint8_t layer, uint8_t mod, uint16_t timeout) {
+bool process_handle_key_actions(uint16_t keycode, keyrecord_t* record, double_hold_state_t* state, uint16_t tap_keycode, uint8_t layer, uint8_t mod, uint16_t timeout) {
     if (record->tap.count > 0) {
         if (record->tap.count == 1) { // Single tap
             if (record->event.pressed) {
-                tap_code(tap_keycode);
+                uint16_t current_time = timer_read();
+
+                // Check if this is a double tap (tap within timeout of previous tap)
+                if (state->waiting_for_double_tap && (current_time - state->last_tap_time < DOUBLE_TAP_TIMEOUT)) {
+                    // Double tap detected - activate one shot layer and mods
+                    set_oneshot_layer(layer, ONESHOT_START);
+                    set_oneshot_mods(mod);
+                    state->waiting_for_double_tap = false;
+                    return false; // Skip default handling
+                } else {
+                    // First tap - send keycode and start waiting for potential double tap
+                    tap_code(tap_keycode);
+                    state->last_tap_time          = current_time;
+                    state->waiting_for_double_tap = true;
+                }
             }
         } else { // Tap + hold
             if (record->event.pressed) {
                 register_mods(mod);
                 layer_on(layer);
+                state->waiting_for_double_tap = false; // Clear double tap state
             } else {
                 layer_off(layer);
                 unregister_mods(mod);
@@ -68,6 +86,8 @@ bool process_double_hold_key(uint16_t keycode, keyrecord_t* record, double_hold_
         // Handle hold and double hold
         if (record->event.pressed) {
             uint16_t current_time = timer_read();
+            state->waiting_for_double_tap = false; // Clear double tap state on hold
+
             // Check if this is a double hold (hold within timeout of previous hold)
             if (current_time - state->last_hold_time < timeout) {
                 // Double hold detected - activate mod + layer
@@ -99,8 +119,8 @@ bool process_double_hold_key(uint16_t keycode, keyrecord_t* record, double_hold_
 }
 
 // State tracking for keys that use double hold functionality
-static double_hold_state_t hypr_bslsh_state = {0, false};
-static double_hold_state_t alt_c_state      = {0, false};
+static double_hold_state_t hypr_bslsh_state = {0, 0, false, false};
+static double_hold_state_t alt_c_state      = {0, 0, false, false};
 
 bool process_record_user(uint16_t keycode, keyrecord_t* record) {
     switch (keycode) {
@@ -117,9 +137,9 @@ bool process_record_user(uint16_t keycode, keyrecord_t* record) {
         // * on tap + hold:  hypr + layer 4
         // * on double hold: hypr + layer 4
         case HYPR_BSLSH:
-            return process_double_hold_key(keycode, record, &hypr_bslsh_state, KC_BACKSLASH, 4, MOD_HYPR, DOUBLE_HOLD_TIMEOUT);
+            return process_handle_key_actions(keycode, record, &hypr_bslsh_state, KC_BACKSLASH, 4, MOD_HYPR, DOUBLE_HOLD_TIMEOUT);
         case ALT_C:
-            return process_double_hold_key(keycode, record, &alt_c_state, KC_C, 4, MOD_LALT, DOUBLE_HOLD_TIMEOUT);
+            return process_handle_key_actions(keycode, record, &alt_c_state, KC_C, 4, MOD_LALT, DOUBLE_HOLD_TIMEOUT);
         default:
             return true;
     }
