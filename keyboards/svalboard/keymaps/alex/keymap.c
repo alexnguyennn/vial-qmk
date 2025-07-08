@@ -108,6 +108,7 @@ bool process_handle_key_actions(uint16_t keycode, keyrecord_t* record, double_ho
                 layer_off(layer);
                 unregister_mods(mod);
                 state->double_hold_active = false;
+                state->last_hold_time     = 0; // Reset timestamp to prevent next hold from being detected as double hold
                 return false; // Skip default handling
             } else {
                 // Update timestamp for potential future double hold
