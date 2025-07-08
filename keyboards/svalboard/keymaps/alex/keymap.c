@@ -44,52 +44,43 @@ typedef struct {
 // Generic function to handle double hold behavior
 // Returns true if QMK should continue with default processing, false if handled
 bool process_handle_key_actions(uint16_t keycode, keyrecord_t* record, double_hold_state_t* state, uint16_t tap_keycode, uint8_t layer, uint8_t mod, uint16_t timeout) {
+    // If this is any kind of tap event, let QMK handle it completely
+    // This preserves rapid tapping, tap+hold, and all mod-tap settings
     if (record->tap.count > 0) {
-        if (record->tap.count == 1) { // Single tap
-            // For single taps, let QMK handle it naturally to preserve rapid tapping
-            return true; // Continue with default processing
-        } else {         // Tap + hold (tap.count > 1)
-            if (record->event.pressed) {
-                register_mods(mod);
-                layer_on(layer);
-            } else {
-                layer_off(layer);
-                unregister_mods(mod);
-            }
-            return false; // Skip default handling for tap+hold
+        return true; // Let QMK handle all tap behavior naturally
+    }
+    // TODO: bring back tap & hold
+
+    // Only handle pure hold events for double hold functionality
+    if (record->event.pressed) {
+        uint16_t current_time = timer_read();
+
+        // Check if this is a double hold (hold within timeout of previous hold)
+        if (current_time - state->last_hold_time < timeout) {
+            // Double hold detected - activate mod + layer
+            register_mods(mod);
+            layer_on(layer);
+            state->double_hold_active = true;
+            return false; // Skip default handling
+        } else {
+            // Single hold - update timestamp and use default behavior
+            state->last_hold_time     = current_time;
+            state->double_hold_active = false;
+            return true; // Continue with default mod-tap behavior
         }
     } else {
-        // Handle hold and double hold
-        if (record->event.pressed) {
-            uint16_t current_time = timer_read();
-
-            // Check if this is a double hold (hold within timeout of previous hold)
-            if (current_time - state->last_hold_time < timeout) {
-                // Double hold detected - activate mod + layer
-                register_mods(mod);
-                layer_on(layer);
-                state->double_hold_active = true;
-                return false; // Skip default handling
-            } else {
-                // Single hold - update timestamp and use default behavior
-                state->last_hold_time     = current_time;
-                state->double_hold_active = false;
-                return true; // Continue with default mod-tap behavior
-            }
+        // Key released
+        if (state->double_hold_active) {
+            // Clean up double hold state
+            layer_off(layer);
+            unregister_mods(mod);
+            state->double_hold_active = false;
+            state->last_hold_time     = 0; // Reset timestamp to prevent next hold from being detected as double hold
+            return false;                  // Skip default handling
         } else {
-            // Key released
-            if (state->double_hold_active) {
-                // Clean up double hold state
-                layer_off(layer);
-                unregister_mods(mod);
-                state->double_hold_active = false;
-                state->last_hold_time     = 0; // Reset timestamp to prevent next hold from being detected as double hold
-                return false; // Skip default handling
-            } else {
-                // Update timestamp for potential future double hold
-                state->last_hold_time = timer_read();
-                return true; // Continue with default behavior
-            }
+            // Update timestamp for potential future double hold
+            state->last_hold_time = timer_read();
+            return true; // Continue with default behavior
         }
     }
 }
