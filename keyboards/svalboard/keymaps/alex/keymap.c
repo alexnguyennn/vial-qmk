@@ -34,6 +34,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 // Define the keycode. The "KC_0" is an arbitrary placeholder that is never sent.
 #define HYPR_BSLSH ALL_T(KC_BACKSLASH)
 #define ALT_C LALT_T(KC_C)
+#define GUI_X LGUI_T(KC_X)
 #define CTL_SFT LCTL_T(KC_0)
 
 enum custom_keycodes { SPACE_HYPR_L5 = RANGE_START };
@@ -122,6 +123,7 @@ bool process_handle_key_actions(uint16_t keycode, keyrecord_t* record, double_ho
 // State tracking for keys that use double hold functionality
 static double_hold_state_t hypr_bslsh_state = {0, 0, false, false};
 static double_hold_state_t alt_c_state      = {0, 0, false, false};
+static double_hold_state_t gui_x_state      = {0, 0, false, false};
 
 bool process_record_user(uint16_t keycode, keyrecord_t* record) {
     switch (keycode) {
@@ -141,6 +143,8 @@ bool process_record_user(uint16_t keycode, keyrecord_t* record) {
             return process_handle_key_actions(keycode, record, &hypr_bslsh_state, KC_BACKSLASH, 4, MOD_HYPR, DOUBLE_HOLD_TIMEOUT);
         case ALT_C:
             return process_handle_key_actions(keycode, record, &alt_c_state, KC_C, 4, MOD_LALT, DOUBLE_HOLD_TIMEOUT);
+        case GUI_X:
+            return process_handle_key_actions(keycode, record, &gui_x_state, KC_X, 6, MOD_LGUI, DOUBLE_HOLD_TIMEOUT);
         default:
             return true;
     }
