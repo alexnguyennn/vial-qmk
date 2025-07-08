@@ -31,11 +31,6 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 // keys we want to show in vial should be QK_KB_0 onwards
 #define RANGE_START SV_TOGGLE_AUTOMOUSE + 1
 
-// Define the keycode. The "KC_0" is an arbitrary placeholder that is never sent.
-#define HYPR_BSLSH ALL_T(KC_BACKSLASH)
-#define ALT_C LALT_T(KC_C)
-#define GUI_X LGUI_T(KC_X)
-#define CTL_SFT LCTL_T(KC_0)
 enum custom_keycodes { SPACE_HYPR_L5 = RANGE_START };
 
 // Double hold functionality
@@ -51,10 +46,9 @@ typedef struct {
 bool process_handle_key_actions(uint16_t keycode, keyrecord_t* record, double_hold_state_t* state, uint16_t tap_keycode, uint8_t layer, uint8_t mod, uint16_t timeout) {
     if (record->tap.count > 0) {
         if (record->tap.count == 1) { // Single tap
-            if (record->event.pressed) {
-                tap_code(tap_keycode);
-            }
-        } else { // Tap + hold
+            // For single taps, let QMK handle it naturally to preserve rapid tapping
+            return true; // Continue with default processing
+        } else {         // Tap + hold (tap.count > 1)
             if (record->event.pressed) {
                 register_mods(mod);
                 layer_on(layer);
@@ -62,8 +56,8 @@ bool process_handle_key_actions(uint16_t keycode, keyrecord_t* record, double_ho
                 layer_off(layer);
                 unregister_mods(mod);
             }
+            return false; // Skip default handling for tap+hold
         }
-        return false; // Skip default handling for tap/tap+hold
     } else {
         // Handle hold and double hold
         if (record->event.pressed) {
@@ -100,31 +94,36 @@ bool process_handle_key_actions(uint16_t keycode, keyrecord_t* record, double_ho
     }
 }
 
-// State tracking for keys that use double hold functionality
-static double_hold_state_t hypr_bslsh_state = {0, false};
-static double_hold_state_t alt_c_state      = {0, false};
-static double_hold_state_t gui_x_state      = {0, false};
+// Define the list of keys with their configuration
+// Format: X(unique_id, keycode_expression, tap_key, layer, mod)
+#define DOUBLE_HOLD_KEYS                                                 \
+    X(hypr_bslsh, ALL_T(KC_BACKSLASH), KC_BACKSLASH, 4, MOD_HYPR)        \
+    X(cg_a, MT(MOD_LCTL | MOD_LGUI, KC_A), KC_A, 6, MOD_LCTL | MOD_LGUI) \
+    X(ctl_z, LCTL_T(KC_Z), KC_Z, 6, MOD_LCTL)                            \
+    X(alt_c, LALT_T(KC_C), KC_C, 6, MOD_LALT)                            \
+    X(gui_x, LGUI_T(KC_X), KC_X, 6, MOD_LGUI)
+
+// Generate state variables for each key using the unique identifier
+#define X(id, keycode, tap_key, layer, mod) static double_hold_state_t id##_state = {0, false};
+DOUBLE_HOLD_KEYS
+#undef X
 
 bool process_record_user(uint16_t keycode, keyrecord_t* record) {
     switch (keycode) {
         case SPACE_HYPR_L5:
-        case CTL_SFT:
             if (record->event.pressed) {
                 // Send the string "hello" when the key is pressed
                 send_string("hello");
                 return false;
             }
-        // Implements:
-        // * on tap:         one backslash
-        // * on hold:        hypr
-        // * on tap + hold:  hypr + layer 4
-        // * on double hold: hypr + layer 4
-        case HYPR_BSLSH:
-            return process_handle_key_actions(keycode, record, &hypr_bslsh_state, KC_BACKSLASH, 4, MOD_HYPR, DOUBLE_HOLD_TIMEOUT);
-        case ALT_C:
-            return process_handle_key_actions(keycode, record, &alt_c_state, KC_C, 4, MOD_LALT, DOUBLE_HOLD_TIMEOUT);
-        case GUI_X:
-            return process_handle_key_actions(keycode, record, &gui_x_state, KC_X, 6, MOD_LGUI, DOUBLE_HOLD_TIMEOUT);
+
+// Generate case statements for all double hold keys
+#define X(id, keycode, tap_key, layer, mod) \
+    case keycode:                           \
+        return process_handle_key_actions(keycode, record, &id##_state, tap_key, layer, mod, DOUBLE_HOLD_TIMEOUT);
+            DOUBLE_HOLD_KEYS
+#undef X
+
         default:
             return true;
     }
@@ -200,7 +199,7 @@ const uint16_t PROGMEM keymaps[DYNAMIC_KEYMAP_LAYER_COUNT][MATRIX_ROWS][MATRIX_C
 
         /*Down                  Inner (pad)     Upper (Mode)    O.Upper (nail)  OL (knuckle) Pushthrough*/
         /*RT*/ MO(NAS),         KC_SPACE,       TO(FUNC),       KC_BSPC,        KC_LALT,     TG(NAS),
-        /*LT*/ KC_LSFT,         CTL_SFT,       TO(NORMAL),          KC_TAB,         KC_LCTL,     KC_CAPS
+        /*LT*/ KC_LSFT,         KC_ENTER,       TO(NORMAL),          KC_TAB,         KC_LCTL,     KC_CAPS
         ),
 
     [NORMAL_HOLD] = LAYOUT(
