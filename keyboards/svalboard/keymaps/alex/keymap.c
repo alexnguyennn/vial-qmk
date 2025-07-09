@@ -39,7 +39,7 @@ typedef struct {
     bool     double_hold_active;
 } double_hold_state_t;
 
-#define DOUBLE_HOLD_TIMEOUT 400 // milliseconds
+#define DOUBLE_HOLD_TIMEOUT 380 // milliseconds
 
 // Generic function to handle double hold behavior
 // Returns true if QMK should continue with default processing, false if handled
@@ -87,11 +87,31 @@ bool process_handle_key_actions(uint16_t keycode, keyrecord_t* record, double_ho
 
 // Define the list of keys with their configuration
 // Format: X(unique_id, keycode_expression, tap_key, layer, mod)
-#define DOUBLE_HOLD_KEYS                                                 \
-    X(hypr_bslsh, ALL_T(KC_BACKSLASH), KC_BACKSLASH, 4, MOD_HYPR)        \
-    X(cg_a, MT(MOD_LCTL | MOD_LGUI, KC_A), KC_A, 6, MOD_LCTL | MOD_LGUI) \
-    X(ctl_z, LCTL_T(KC_Z), KC_Z, 6, MOD_LCTL)                            \
-    X(alt_c, LALT_T(KC_C), KC_C, 6, MOD_LALT)                            \
+#define DOUBLE_HOLD_KEYS                                                                        \
+    X(hypr_bslsh, ALL_T(KC_BACKSLASH), KC_BACKSLASH, 4, MOD_HYPR)                               \
+    X(csg_p, MT(MOD_LCTL | MOD_LSFT | MOD_LGUI, KC_P), KC_P, 4, MOD_LCTL | MOD_LSFT | MOD_LGUI) \
+    X(csg_o, MT(MOD_LCTL | MOD_LALT | MOD_LGUI, KC_O), KC_O, 4, MOD_LCTL | MOD_LALT | MOD_LGUI) \
+    X(asg_i, MT(MOD_LALT | MOD_LSFT | MOD_LGUI, KC_I), KC_I, 4, MOD_LALT | MOD_LSFT | MOD_LGUI) \
+    X(meh_u, MT(MOD_MEH, KC_U), KC_U, 4, MOD_MEH)                                               \
+    X(cg_scln, MT(MOD_LCTL | MOD_LGUI, KC_SEMICOLON), KC_SEMICOLON, 4, MOD_LCTL | MOD_LGUI)     \
+    X(ag_l, MT(MOD_LALT | MOD_LGUI, KC_L), KC_L, 4, MOD_LALT | MOD_LGUI)                        \
+    X(gs_k, MT(MOD_LSFT | MOD_LGUI, KC_K), KC_K, 4, MOD_LSFT | MOD_LGUI)                        \
+    X(cs_j, MT(MOD_LSFT | MOD_LCTL, KC_J), KC_J, 4, MOD_LSFT | MOD_LCTL)                        \
+    X(ca_h, MT(MOD_LCTL | MOD_LALT, KC_H), KC_H, 4, MOD_LCTL | MOD_LALT)                        \
+    X(ctl_slash, LCTL_T(KC_SLASH), KC_SLASH, 4, MOD_LCTL)                                       \
+    X(alt_comma, LALT_T(KC_COMMA), KC_COMMA, 4, MOD_LALT)                                       \
+    X(gui_period, LGUI_T(KC_DOT), KC_DOT, 4, MOD_LGUI)                                          \
+    X(csg_q, MT(MOD_LCTL | MOD_LSFT | MOD_LGUI, KC_Q), KC_Q, 6, MOD_LCTL | MOD_LSFT | MOD_LGUI) \
+    X(csg_w, MT(MOD_LCTL | MOD_LALT | MOD_LGUI, KC_W), KC_W, 6, MOD_LCTL | MOD_LALT | MOD_LGUI) \
+    X(asg_e, MT(MOD_LALT | MOD_LSFT | MOD_LGUI, KC_E), KC_E, 6, MOD_LALT | MOD_LSFT | MOD_LGUI) \
+    X(meh_r, MT(MOD_MEH, KC_R), KC_R, 6, MOD_MEH)                                               \
+    X(cg_a, MT(MOD_LCTL | MOD_LGUI, KC_A), KC_A, 6, MOD_LCTL | MOD_LGUI)                        \
+    X(ag_s, MT(MOD_LALT | MOD_LGUI, KC_S), KC_S, 6, MOD_LALT | MOD_LGUI)                        \
+    X(gs_d, MT(MOD_LSFT | MOD_LGUI, KC_D), KC_D, 6, MOD_LSFT | MOD_LGUI)                        \
+    X(cs_f, MT(MOD_LSFT | MOD_LCTL, KC_F), KC_F, 6, MOD_LSFT | MOD_LCTL)                        \
+    X(ca_g, MT(MOD_LCTL | MOD_LALT, KC_G), KC_G, 6, MOD_LCTL | MOD_LALT)                        \
+    X(ctl_z, LCTL_T(KC_Z), KC_Z, 6, MOD_LCTL)                                                   \
+    X(alt_c, LALT_T(KC_C), KC_C, 6, MOD_LALT)                                                   \
     X(gui_x, LGUI_T(KC_X), KC_X, 6, MOD_LGUI)
 
 // Generate state variables for each key using the unique identifier
