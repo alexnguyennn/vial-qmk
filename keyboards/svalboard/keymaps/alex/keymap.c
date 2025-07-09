@@ -299,6 +299,18 @@ const uint16_t PROGMEM keymaps[DYNAMIC_KEYMAP_LAYER_COUNT][MATRIX_ROWS][MATRIX_C
 };
 // clang-format on
 
+uint16_t achordion_timeout(uint16_t tap_hold_keycode) {
+    // Configure 0 timeout for thumb cluster keys to make them immediately responsive
+    switch (tap_hold_keycode) {
+        // Thumb cluster keys from the keymap
+        case LT(4, KC_BACKSPACE): // leftpad
+        case LT(4, KC_ENTER):     // rightpad
+            return 0;             // Bypass Achordion timeout for thumb keys
+    }
+
+    return 800; // Use 800ms timeout for all other tap-hold keys
+}
+
 bool achordion_chord(uint16_t tap_hold_keycode, keyrecord_t* tap_hold_record, uint16_t other_keycode, keyrecord_t* other_record) {
     if (tap_hold_record->event.key.row == 0 || tap_hold_record->event.key.row == 5 || other_record->event.key.row == 0 || other_record->event.key.row == 5) {
         return true;

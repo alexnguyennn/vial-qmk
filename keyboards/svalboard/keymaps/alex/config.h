@@ -21,3 +21,5 @@
 // Shorten the unlock timeout (needs mod in `quantum/vial.c`; without
 // it the override doesn't work)
 #define VIAL_UNLOCK_COUNTER_MAX 12
+
+#define ACHORDION_STREAK
