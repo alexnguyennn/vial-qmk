@@ -39,7 +39,7 @@ typedef struct {
     bool     double_hold_active;
 } double_hold_state_t;
 
-#define DOUBLE_HOLD_TIMEOUT 380 // milliseconds
+#define DOUBLE_HOLD_TIMEOUT 150 // milliseconds - reduced from 200ms for more precision
 
 // Generic function to handle double hold behavior
 // Returns true if QMK should continue with default processing, false if handled
@@ -47,24 +47,24 @@ bool process_handle_key_actions(uint16_t keycode, keyrecord_t* record, double_ho
     // If this is any kind of tap event, let QMK handle it completely
     // This preserves rapid tapping, tap+hold, and all mod-tap settings
     if (record->tap.count > 0) {
+        // Clear any double hold tracking on taps to prevent interference
+        state->last_hold_time = 0;
         return true; // Let QMK handle all tap behavior naturally
     }
-    // TODO: bring back tap & hold
 
     // Only handle pure hold events for double hold functionality
     if (record->event.pressed) {
         uint16_t current_time = timer_read();
 
         // Check if this is a double hold (hold within timeout of previous hold)
-        if (current_time - state->last_hold_time < timeout) {
+        if (state->last_hold_time != 0 && (current_time - state->last_hold_time < timeout)) {
             // Double hold detected - activate mod + layer
             register_mods(mod);
             layer_on(layer);
             state->double_hold_active = true;
             return false; // Skip default handling
         } else {
-            // Single hold - update timestamp and use default behavior
-            state->last_hold_time     = current_time;
+            // Single hold - DON'T update timestamp yet, let it complete first
             state->double_hold_active = false;
             return true; // Continue with default mod-tap behavior
         }
@@ -78,7 +78,8 @@ bool process_handle_key_actions(uint16_t keycode, keyrecord_t* record, double_ho
             state->last_hold_time     = 0; // Reset timestamp to prevent next hold from being detected as double hold
             return false;                  // Skip default handling
         } else {
-            // Update timestamp for potential future double hold
+            // Only record timestamp on successful completion of a hold
+            // This prevents quick presses from polluting the double hold detection
             state->last_hold_time = timer_read();
             return true; // Continue with default behavior
         }
