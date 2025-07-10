@@ -16,3 +16,15 @@ You’ll need to flash both sides when updating FW. To do this, each side will n
 
 ** Turning off achordion
 - look for Toggle ACH button in Vial
+- generally don't need to turn it off now that we've customised the timeouts
+** Custom keys in vial
+- [[https://github.com/svalboard/vial-qmk/blob/vial/keyboards/svalboard/docs/custom_firmware.md#accessing-svalboard-specific-keycodes][svalboard docs]] pointing to use =SV_SAFE_RANGE= only make sense if you don't want to make the key available to bind in Vial/keybard (given the current format of =keymap_support.h=)
+  - for some reason =KC_NORMAL_HOLD/KC_FUNC_HOLD= aren't actually declared in vial.json so we can actually bind from =SAFE_RANGE=
+- if you do want them bindable in Vial/keybard, you'll need to make sure it's indexed from =QK_KB_0= (see [[https://get.vial.today/docs/custom_keycode.html][vial docs]])
+- can't declare a macro to be a custom key alias (e.g. =#define KEY LCTL_T(KC_0)= and then alias =KEY=)
+* Links
+- [[https://github.com/vial-kb/vial-qmk/issues/820#issuecomment-2727564994][useful comment]]
+  - walks through idea of customising default mod tap behaviour
+    - better than tapdance as it respects permissive hold settings (which we want, hrm)
+- [[https://getreuer.info/posts/keyboards/achordion/index.html][achordion docs]]
+  - gives idea of how to customise and tweak handedness timeout per key
