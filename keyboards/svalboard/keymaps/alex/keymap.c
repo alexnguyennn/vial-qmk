@@ -36,10 +36,13 @@ enum custom_keycodes { SPACE_HYPR_L5 = RANGE_START };
 // Double hold functionality
 typedef struct {
     uint16_t last_hold_time;
+    uint16_t current_press_time;
     bool     double_hold_active;
+    bool     was_actually_held; // Track if this was a real hold vs quick press
 } double_hold_state_t;
 
-#define DOUBLE_HOLD_TIMEOUT 150 // milliseconds - reduced from 200ms for more precision
+#define DOUBLE_HOLD_TIMEOUT 500 // milliseconds
+#define MIN_HOLD_DURATION 50    // milliseconds - much lower to catch permissive hold triggers
 
 // Generic function to handle double hold behavior
 // Returns true if QMK should continue with default processing, false if handled
@@ -49,25 +52,38 @@ bool process_handle_key_actions(uint16_t keycode, keyrecord_t* record, double_ho
     if (record->tap.count > 0) {
         // Clear any double hold tracking on taps to prevent interference
         state->last_hold_time = 0;
+        state->current_press_time = 0;
+        state->was_actually_held  = false;
         return true; // Let QMK handle all tap behavior naturally
     }
 
     // Only handle pure hold events for double hold functionality
     if (record->event.pressed) {
         uint16_t current_time = timer_read();
+        state->current_press_time = current_time;
+        state->was_actually_held  = false;
 
         // Check if this is a double hold (hold within timeout of previous hold)
-        if (state->last_hold_time != 0 && (current_time - state->last_hold_time < timeout)) {
-            // Double hold detected - activate mod + layer
-            register_mods(mod);
-            layer_on(layer);
-            state->double_hold_active = true;
-            return false; // Skip default handling
-        } else {
-            // Single hold - DON'T update timestamp yet, let it complete first
-            state->double_hold_active = false;
-            return true; // Continue with default mod-tap behavior
+        // Add timer wraparound protection
+        if (state->last_hold_time != 0) {
+            uint16_t time_diff = current_time - state->last_hold_time;
+            // Handle timer wraparound (16-bit timer)
+            if (current_time < state->last_hold_time) {
+                time_diff = (0xFFFF - state->last_hold_time) + current_time;
+            }
+
+            if (time_diff < timeout) {
+                // Double hold detected - activate mod + layer
+                register_mods(mod);
+                layer_on(layer);
+                state->double_hold_active = true;
+                return false; // Skip default handling
+            }
         }
+
+        // Single hold - continue with default mod-tap behavior
+        state->double_hold_active = false;
+        return true;
     } else {
         // Key released
         if (state->double_hold_active) {
@@ -75,12 +91,29 @@ bool process_handle_key_actions(uint16_t keycode, keyrecord_t* record, double_ho
             layer_off(layer);
             unregister_mods(mod);
             state->double_hold_active = false;
-            state->last_hold_time     = 0; // Reset timestamp to prevent next hold from being detected as double hold
-            return false;                  // Skip default handling
+            state->last_hold_time     = 0;
+            state->current_press_time = 0;
+            state->was_actually_held  = false;
+            return false; // Skip default handling
         } else {
-            // Only record timestamp on successful completion of a hold
-            // This prevents quick presses from polluting the double hold detection
-            state->last_hold_time = timer_read();
+            // Only record timestamp if held long enough to be a legitimate hold
+            uint16_t current_time  = timer_read();
+            uint16_t hold_duration = current_time - state->current_press_time;
+
+            // Handle timer wraparound
+            if (current_time < state->current_press_time) {
+                hold_duration = (0xFFFF - state->current_press_time) + current_time;
+            }
+
+            if (hold_duration >= MIN_HOLD_DURATION) {
+                state->last_hold_time    = state->current_press_time;
+                state->was_actually_held = true;
+            } else {
+                // Clear state completely for quick presses
+                state->last_hold_time    = 0;
+                state->was_actually_held = false;
+            }
+            state->current_press_time = 0;
             return true; // Continue with default behavior
         }
     }
@@ -116,7 +149,7 @@ bool process_handle_key_actions(uint16_t keycode, keyrecord_t* record, double_ho
     X(gui_x, LGUI_T(KC_X), KC_X, 6, MOD_LGUI)
 
 // Generate state variables for each key using the unique identifier
-#define X(id, keycode, tap_key, layer, mod) static double_hold_state_t id##_state = {0, false};
+#define X(id, keycode, tap_key, layer, mod) static double_hold_state_t id##_state = {0, 0, false, false};
 DOUBLE_HOLD_KEYS
 #undef X
 
