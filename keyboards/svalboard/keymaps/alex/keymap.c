@@ -46,13 +46,29 @@ typedef struct {
 
 #define DOUBLE_HOLD_TIMEOUT 500 // milliseconds
 #define MIN_HOLD_DURATION 50    // milliseconds - much lower to catch permissive hold triggers
-#define DOUBLE_TAP_TIMEOUT 150  // milliseconds - tight timeout for double tap detection
+#define DOUBLE_TAP_TIMEOUT 100  // milliseconds - tight timeout for double tap detection
+
+// Custom one-shot layer state
+static uint8_t custom_oneshot_layer        = 0;
+static bool    custom_oneshot_layer_active = false;
+
+// Function to clear custom one-shot layer if active
+void clear_custom_oneshot_layer(void) {
+    if (custom_oneshot_layer_active) {
+        layer_off(custom_oneshot_layer);
+        custom_oneshot_layer_active = false;
+        custom_oneshot_layer        = 0;
+    }
+}
+
+// Function declarations
+// (removed flush_pending_taps as it's now inlined)
 
 // Generic function to handle double hold behavior
 // Returns true if QMK should continue with default processing, false if handled
 bool process_handle_key_actions(uint16_t keycode, keyrecord_t* record, double_hold_state_t* state, uint16_t tap_keycode, uint8_t layer, uint8_t mod, uint16_t timeout) {
     uint16_t current_time = timer_read();
-    
+
     // If this is any kind of tap event, handle double tap detection
     if (record->tap.count > 0) {
         if (record->event.pressed) {
@@ -63,18 +79,22 @@ bool process_handle_key_actions(uint16_t keycode, keyrecord_t* record, double_ho
                 if (current_time < state->last_tap_time) {
                     time_diff = (0xFFFF - state->last_tap_time) + current_time;
                 }
-                
+
                 if (time_diff < DOUBLE_TAP_TIMEOUT) {
-                    // Double tap detected - activate one-shot mod and one-shot layer
+                    // Double tap detected - activate one-shot mod and custom one-shot layer
                     set_oneshot_mods(mod);
-                    set_oneshot_layer(layer, ONESHOT_START);
-                    
+
+                    // Custom one-shot layer implementation
+                    custom_oneshot_layer        = layer;
+                    custom_oneshot_layer_active = true;
+                    layer_on(layer);
+
                     // Clear pending tap and tracking to prevent character output
                     state->pending_tap = false;
                     state->pending_tap_keycode = 0;
                     state->last_tap_time = 0;
                     state->tap_count = 0;
-                    
+
                     return false; // Skip default handling - no character should be typed
                 } else {
                     // Time exceeded - send the previous pending tap first
@@ -83,17 +103,17 @@ bool process_handle_key_actions(uint16_t keycode, keyrecord_t* record, double_ho
                     state->pending_tap_keycode = 0;
                 }
             }
-            
+
             // Set up pending tap (delay character output to wait for potential double tap)
             state->last_tap_time = current_time;
             state->tap_count = 1;
             state->pending_tap = true;
             state->pending_tap_keycode = tap_keycode;
-            
+
             // Don't let QMK process this tap yet - we'll send it after timeout if needed
             return false;
         }
-        
+
         // Clear any double hold tracking on taps to prevent interference
         state->last_hold_time = 0;
         state->current_press_time = 0;
@@ -112,6 +132,9 @@ bool process_handle_key_actions(uint16_t keycode, keyrecord_t* record, double_ho
         state->pending_tap = false;
         state->pending_tap_keycode = 0;
 
+        // Clear custom one-shot layer if active (redundant with process_record_user but ensures consistency)
+        clear_custom_oneshot_layer();
+
         // Check if this is a double hold (hold within timeout of previous hold)
         // Add timer wraparound protection
         if (state->last_hold_time != 0) {
@@ -124,8 +147,11 @@ bool process_handle_key_actions(uint16_t keycode, keyrecord_t* record, double_ho
             if (time_diff < timeout) {
                 // Double hold detected - clear oneshot state before activating persistent mod/layer
                 clear_oneshot_mods();
-                clear_oneshot_layer_state(ONESHOT_PRESSED);
-                
+                reset_oneshot_layer();
+
+                // Clear custom one-shot layer if active
+                clear_custom_oneshot_layer();
+
                 // Activate mod + layer
                 register_mods(mod);
                 layer_on(layer);
@@ -208,6 +234,22 @@ DOUBLE_HOLD_KEYS
 #undef X
 
 bool process_record_user(uint16_t keycode, keyrecord_t* record) {
+    // On any key press, flush pending taps from OTHER keys to improve typing flow
+    if (record->event.pressed) {
+        // Check if we need to clear custom one-shot layer
+        clear_custom_oneshot_layer();
+
+        // Flush pending taps from all keys except the current one
+#define X(id, keycode_check, tap_key, layer, mod)             \
+    if (keycode != keycode_check && id##_state.pending_tap) { \
+        tap_code(id##_state.pending_tap_keycode);             \
+        id##_state.pending_tap         = false;               \
+        id##_state.pending_tap_keycode = 0;                   \
+    }
+        DOUBLE_HOLD_KEYS
+#undef X
+    }
+
     switch (keycode) {
 // Generate case statements for all double hold keys
 #define X(id, keycode, tap_key, layer, mod) \
@@ -403,7 +445,7 @@ bool achordion_chord(uint16_t tap_hold_keycode, keyrecord_t* tap_hold_record, ui
 // Function to check and send pending taps that have timed out
 void check_pending_taps(void) {
     uint16_t current_time = timer_read();
-    
+
 #define X(id, keycode, tap_key, layer, mod) \
     if (id##_state.pending_tap) { \
         uint16_t pending_time_diff = current_time - id##_state.last_tap_time; \
