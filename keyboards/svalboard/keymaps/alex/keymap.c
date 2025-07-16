@@ -52,7 +52,7 @@ typedef struct {
 
 // Generic function to handle double hold behavior
 // Returns true if QMK should continue with default processing, false if handled
-bool process_handle_key_actions(uint16_t keycode, keyrecord_t* record, double_hold_state_t* state, uint16_t tap_keycode, uint8_t layer, uint8_t mod, uint16_t timeout) {
+bool process_handle_key_actions(uint16_t keycode, keyrecord_t* record, double_hold_state_t* state, uint16_t tap_keycode, uint8_t layer, uint8_t mod, uint16_t double_hold_timeout, uint16_t double_tap_timeout) {
     uint16_t current_time = timer_read();
 
     // If this is any kind of tap event, handle double tap detection
@@ -85,7 +85,7 @@ bool process_handle_key_actions(uint16_t keycode, keyrecord_t* record, double_ho
                     time_diff = (0xFFFF - state->last_tap_time) + current_time;
                 }
 
-                if (time_diff < DOUBLE_TAP_TIMEOUT) {
+                if (time_diff < double_tap_timeout) {
                     // Quick tap detected - could be double tap or start of rapid repeats
                     // Check if we're already in rapid repeat mode
                     if (state->tap_count >= 2) {
@@ -164,11 +164,11 @@ bool process_handle_key_actions(uint16_t keycode, keyrecord_t* record, double_ho
             state->tap_count = 0;
             state->pending_tap = false;
             state->pending_tap_keycode = 0;
-            
+
             // This is tap-and-hold, not a pure hold, so don't use it for double hold timing
             state->tap_and_hold_active = true;
             state->double_hold_active = false;
-            
+
             // Let QMK handle the tap-and-hold behavior (tap + repeat while held)
             return true;
         }
@@ -189,7 +189,7 @@ bool process_handle_key_actions(uint16_t keycode, keyrecord_t* record, double_ho
                 time_diff = (0xFFFF - state->last_hold_time) + current_time;
             }
 
-            if (time_diff < timeout) {
+            if (time_diff < double_hold_timeout) {
                 // Double hold detected - clear oneshot state before activating persistent mod/layer
                 clear_oneshot_mods();
                 reset_oneshot_layer();
@@ -250,36 +250,36 @@ bool process_handle_key_actions(uint16_t keycode, keyrecord_t* record, double_ho
 }
 
 // Define the list of keys with their configuration
-// Format: X(unique_id, keycode_expression, tap_key, layer, mod)
-#define DOUBLE_HOLD_KEYS                                                                        \
-    X(hypr_bslsh, ALL_T(KC_BACKSLASH), KC_BACKSLASH, 4, MOD_HYPR)                               \
-    X(csg_p, MT(MOD_LCTL | MOD_LSFT | MOD_LGUI, KC_P), KC_P, 4, MOD_LCTL | MOD_LSFT | MOD_LGUI) \
-    X(csg_o, MT(MOD_LCTL | MOD_LALT | MOD_LGUI, KC_O), KC_O, 4, MOD_LCTL | MOD_LALT | MOD_LGUI) \
-    X(asg_i, MT(MOD_LALT | MOD_LSFT | MOD_LGUI, KC_I), KC_I, 4, MOD_LALT | MOD_LSFT | MOD_LGUI) \
-    X(meh_u, MT(MOD_MEH, KC_U), KC_U, 4, MOD_MEH)                                               \
-    X(cg_scln, MT(MOD_LCTL | MOD_LGUI, KC_SEMICOLON), KC_SEMICOLON, 4, MOD_LCTL | MOD_LGUI)     \
-    X(ag_l, MT(MOD_LALT | MOD_LGUI, KC_L), KC_L, 4, MOD_LALT | MOD_LGUI)                        \
-    X(gs_k, MT(MOD_LSFT | MOD_LGUI, KC_K), KC_K, 4, MOD_LSFT | MOD_LGUI)                        \
-    X(cs_j, MT(MOD_LSFT | MOD_LCTL, KC_J), KC_J, 4, MOD_LSFT | MOD_LCTL)                        \
-    X(ca_h, MT(MOD_LCTL | MOD_LALT, KC_H), KC_H, 4, MOD_LCTL | MOD_LALT)                        \
-    X(ctl_slash, LCTL_T(KC_SLASH), KC_SLASH, 4, MOD_LCTL)                                       \
-    X(alt_comma, LALT_T(KC_COMMA), KC_COMMA, 4, MOD_LALT)                                       \
-    X(gui_period, LGUI_T(KC_DOT), KC_DOT, 4, MOD_LGUI)                                          \
-    X(csg_q, MT(MOD_LCTL | MOD_LSFT | MOD_LGUI, KC_Q), KC_Q, 6, MOD_LCTL | MOD_LSFT | MOD_LGUI) \
-    X(csg_w, MT(MOD_LCTL | MOD_LALT | MOD_LGUI, KC_W), KC_W, 6, MOD_LCTL | MOD_LALT | MOD_LGUI) \
-    X(asg_e, MT(MOD_LALT | MOD_LSFT | MOD_LGUI, KC_E), KC_E, 6, MOD_LALT | MOD_LSFT | MOD_LGUI) \
-    X(meh_r, MT(MOD_MEH, KC_R), KC_R, 6, MOD_MEH)                                               \
-    X(cg_a, MT(MOD_LCTL | MOD_LGUI, KC_A), KC_A, 6, MOD_LCTL | MOD_LGUI)                        \
-    X(ag_s, MT(MOD_LALT | MOD_LGUI, KC_S), KC_S, 6, MOD_LALT | MOD_LGUI)                        \
-    X(gs_d, MT(MOD_LSFT | MOD_LGUI, KC_D), KC_D, 6, MOD_LSFT | MOD_LGUI)                        \
-    X(cs_f, MT(MOD_LSFT | MOD_LCTL, KC_F), KC_F, 6, MOD_LSFT | MOD_LCTL)                        \
-    X(ca_g, MT(MOD_LCTL | MOD_LALT, KC_G), KC_G, 6, MOD_LCTL | MOD_LALT)                        \
-    X(ctl_z, LCTL_T(KC_Z), KC_Z, 6, MOD_LCTL)                                                   \
-    X(alt_c, LALT_T(KC_C), KC_C, 6, MOD_LALT)                                                   \
-    X(gui_x, LGUI_T(KC_X), KC_X, 6, MOD_LGUI)
+// Format: X(unique_id, keycode_expression, tap_key, layer, mod, double_tap_timeout)
+#define DOUBLE_HOLD_KEYS                                                                             \
+    X(hypr_bslsh, ALL_T(KC_BACKSLASH), KC_BACKSLASH, 4, MOD_HYPR, 120)                               \
+    X(csg_p, MT(MOD_LCTL | MOD_LSFT | MOD_LGUI, KC_P), KC_P, 4, MOD_LCTL | MOD_LSFT | MOD_LGUI, 120) \
+    X(csg_o, MT(MOD_LCTL | MOD_LALT | MOD_LGUI, KC_O), KC_O, 4, MOD_LCTL | MOD_LALT | MOD_LGUI, 120) \
+    X(asg_i, MT(MOD_LALT | MOD_LSFT | MOD_LGUI, KC_I), KC_I, 4, MOD_LALT | MOD_LSFT | MOD_LGUI, 80)  \
+    X(meh_u, MT(MOD_MEH, KC_U), KC_U, 4, MOD_MEH, 80)                                                \
+    X(cg_scln, MT(MOD_LCTL | MOD_LGUI, KC_SEMICOLON), KC_SEMICOLON, 4, MOD_LCTL | MOD_LGUI, 80)      \
+    X(ag_l, MT(MOD_LALT | MOD_LGUI, KC_L), KC_L, 4, MOD_LALT | MOD_LGUI, 80)                         \
+    X(gs_k, MT(MOD_LSFT | MOD_LGUI, KC_K), KC_K, 4, MOD_LSFT | MOD_LGUI, 80)                         \
+    X(cs_j, MT(MOD_LSFT | MOD_LCTL, KC_J), KC_J, 4, MOD_LSFT | MOD_LCTL, 80)                         \
+    X(ca_h, MT(MOD_LCTL | MOD_LALT, KC_H), KC_H, 4, MOD_LCTL | MOD_LALT, 80)                         \
+    X(ctl_slash, LCTL_T(KC_SLASH), KC_SLASH, 4, MOD_LCTL, 120)                                       \
+    X(alt_comma, LALT_T(KC_COMMA), KC_COMMA, 4, MOD_LALT, 120)                                       \
+    X(gui_period, LGUI_T(KC_DOT), KC_DOT, 4, MOD_LGUI, 120)                                          \
+    X(csg_q, MT(MOD_LCTL | MOD_LSFT | MOD_LGUI, KC_Q), KC_Q, 6, MOD_LCTL | MOD_LSFT | MOD_LGUI, 120) \
+    X(csg_w, MT(MOD_LCTL | MOD_LALT | MOD_LGUI, KC_W), KC_W, 6, MOD_LCTL | MOD_LALT | MOD_LGUI, 120) \
+    X(asg_e, MT(MOD_LALT | MOD_LSFT | MOD_LGUI, KC_E), KC_E, 6, MOD_LALT | MOD_LSFT | MOD_LGUI, 80)  \
+    X(meh_r, MT(MOD_MEH, KC_R), KC_R, 6, MOD_MEH, 80)                                                \
+    X(cg_a, MT(MOD_LCTL | MOD_LGUI, KC_A), KC_A, 6, MOD_LCTL | MOD_LGUI, 80)                         \
+    X(ag_s, MT(MOD_LALT | MOD_LGUI, KC_S), KC_S, 6, MOD_LALT | MOD_LGUI, 80)                         \
+    X(gs_d, MT(MOD_LSFT | MOD_LGUI, KC_D), KC_D, 6, MOD_LSFT | MOD_LGUI, 80)                         \
+    X(cs_f, MT(MOD_LSFT | MOD_LCTL, KC_F), KC_F, 6, MOD_LSFT | MOD_LCTL, 80)                         \
+    X(ca_g, MT(MOD_LCTL | MOD_LALT, KC_G), KC_G, 6, MOD_LCTL | MOD_LALT, 80)                         \
+    X(ctl_z, LCTL_T(KC_Z), KC_Z, 6, MOD_LCTL, 120)                                                   \
+    X(alt_c, LALT_T(KC_C), KC_C, 6, MOD_LALT, 120)                                                   \
+    X(gui_x, LGUI_T(KC_X), KC_X, 6, MOD_LGUI, 120)
 
 // Generate state variables for each key using the unique identifier
-#define X(id, keycode, tap_key, layer, mod) static double_hold_state_t id##_state = {0, 0, false, false, 0, 0, false, 0, false};
+#define X(id, keycode, tap_key, layer, mod, double_tap_timeout) static double_hold_state_t id##_state = {0, 0, false, false, 0, 0, false, 0, false};
 DOUBLE_HOLD_KEYS
 #undef X
 
@@ -288,22 +288,22 @@ bool process_record_user(uint16_t keycode, keyrecord_t* record) {
         // On any key press, flush pending taps from OTHER keys to improve typing flow
         // But be conservative to avoid interfering with caps word and other QMK features
         // Flush pending taps from all keys except the current one
-#define X(id, keycode_check, tap_key, layer, mod)             \
-    if (keycode != keycode_check && id##_state.pending_tap) { \
-        tap_code(id##_state.pending_tap_keycode);             \
-        id##_state.pending_tap         = false;               \
-        id##_state.pending_tap_keycode = 0;                   \
+#define X(id, keycode_check, tap_key, layer, mod, double_tap_timeout) \
+    if (keycode != keycode_check && id##_state.pending_tap) {         \
+        tap_code(id##_state.pending_tap_keycode);                     \
+        id##_state.pending_tap         = false;                       \
+        id##_state.pending_tap_keycode = 0;                           \
     }
-    DOUBLE_HOLD_KEYS
+        DOUBLE_HOLD_KEYS
 #undef X
     }
 
     switch (keycode) {
 // Generate case statements for all double hold keys
-#define X(id, keycode, tap_key, layer, mod) \
-    case keycode:                           \
-        return process_handle_key_actions(keycode, record, &id##_state, tap_key, layer, mod, DOUBLE_HOLD_TIMEOUT);
-            DOUBLE_HOLD_KEYS
+#define X(id, keycode, tap_key, layer, mod, double_tap_timeout) \
+    case keycode:                                               \
+        return process_handle_key_actions(keycode, record, &id##_state, tap_key, layer, mod, DOUBLE_HOLD_TIMEOUT, double_tap_timeout);
+        DOUBLE_HOLD_KEYS
 #undef X
 
         default:
@@ -497,26 +497,26 @@ bool achordion_chord(uint16_t tap_hold_keycode, keyrecord_t* tap_hold_record, ui
 void check_pending_taps(void) {
     uint16_t current_time = timer_read();
 
-#define X(id, keycode, tap_key, layer, mod) \
-    if (id##_state.pending_tap) { \
-        uint16_t pending_time_diff = current_time - id##_state.last_tap_time; \
-        if (current_time < id##_state.last_tap_time) { \
+#define X(id, keycode, tap_key, layer, mod, double_tap_timeout)                     \
+    if (id##_state.pending_tap) {                                                   \
+        uint16_t pending_time_diff = current_time - id##_state.last_tap_time;       \
+        if (current_time < id##_state.last_tap_time) {                              \
             pending_time_diff = (0xFFFF - id##_state.last_tap_time) + current_time; \
-        } \
-        if (pending_time_diff >= DOUBLE_TAP_TIMEOUT) { \
-            if (id##_state.tap_count == 2) { \
+        }                                                                           \
+        if (pending_time_diff >= double_tap_timeout) {                              \
+            if (id##_state.tap_count == 2) {                                        \
                 /* We had exactly 2 taps and timeout expired - activate one-shot */ \
-                set_oneshot_mods(mod); \
-                set_oneshot_layer(layer, ONESHOT_START); \
-            } else { \
-                /* Normal timeout - send the pending tap */ \
-                tap_code(id##_state.pending_tap_keycode); \
-            } \
-            id##_state.pending_tap = false; \
-            id##_state.pending_tap_keycode = 0; \
-            id##_state.tap_count = 0; \
-            id##_state.last_tap_time = 0; \
-        } \
+                set_oneshot_mods(mod);                                              \
+                set_oneshot_layer(layer, ONESHOT_START);                            \
+            } else {                                                                \
+                /* Normal timeout - send the pending tap */                         \
+                tap_code(id##_state.pending_tap_keycode);                           \
+            }                                                                       \
+            id##_state.pending_tap         = false;                                 \
+            id##_state.pending_tap_keycode = 0;                                     \
+            id##_state.tap_count           = 0;                                     \
+            id##_state.last_tap_time       = 0;                                     \
+        }                                                                           \
     }
     DOUBLE_HOLD_KEYS
 #undef X
