@@ -43,27 +43,12 @@ typedef struct {
     uint8_t  tap_count;           // Number of taps in sequence
     bool     pending_tap;         // Whether we have a tap waiting for double tap timeout
     uint16_t pending_tap_keycode; // The keycode to send if no double tap occurs
+    bool     tap_and_hold_active; // Track if we're in tap-and-hold mode
 } double_hold_state_t;
 
 #define DOUBLE_HOLD_TIMEOUT 500 // milliseconds
 #define MIN_HOLD_DURATION 50    // milliseconds - much lower to catch permissive hold triggers
-#define DOUBLE_TAP_TIMEOUT 120  // milliseconds - tight timeout for double tap detection
-
-// Custom one-shot layer state
-static uint8_t custom_oneshot_layer        = 0;
-static bool    custom_oneshot_layer_active = false;
-
-// Function to clear custom one-shot layer if active
-void clear_custom_oneshot_layer(void) {
-    if (custom_oneshot_layer_active) {
-        layer_off(custom_oneshot_layer);
-        custom_oneshot_layer_active = false;
-        custom_oneshot_layer        = 0;
-    }
-}
-
-// Function declarations
-// (removed flush_pending_taps as it's now inlined)
+#define DOUBLE_TAP_TIMEOUT 110  // milliseconds - very tight timeout to minimize delay
 
 // Generic function to handle double hold behavior
 // Returns true if QMK should continue with default processing, false if handled
@@ -87,6 +72,7 @@ bool process_handle_key_actions(uint16_t keycode, keyrecord_t* record, double_ho
                 state->last_hold_time     = 0;
                 state->current_press_time = 0;
                 state->was_actually_held  = false;
+                state->tap_and_hold_active = false;
 
                 return true; // Let QMK and caps word process this normally
             }
@@ -100,22 +86,50 @@ bool process_handle_key_actions(uint16_t keycode, keyrecord_t* record, double_ho
                 }
 
                 if (time_diff < DOUBLE_TAP_TIMEOUT) {
-                    // Double tap detected - activate one-shot mod and one-shot layer using standard QMK functions
-                    set_oneshot_mods(mod);
-                    set_oneshot_layer(layer, ONESHOT_START);
+                    // Quick tap detected - could be double tap or start of rapid repeats
+                    // Check if we're already in rapid repeat mode
+                    if (state->tap_count >= 2) {
+                        // Already had multiple taps - this is rapid repeat mode
+                        // Send the pending tap immediately and let QMK handle this one normally
+                        tap_code(state->pending_tap_keycode);
+                        state->pending_tap = false;
+                        state->pending_tap_keycode = 0;
+                        state->tap_count++;
+                        state->last_tap_time = current_time;
 
-                    // Clear pending tap and tracking to prevent character output
-                    state->pending_tap = false;
-                    state->pending_tap_keycode = 0;
-                    state->last_tap_time = 0;
-                    state->tap_count = 0;
+                        // Let QMK process this tap normally for rapid repeat
+                        return true;
+                    } else {
+                        // This is the second tap - could be double tap for one-shot
+                        // Set up a slightly longer wait to see if a third tap comes
+                        state->tap_count = 2;
+                        state->last_tap_time = current_time;
+                        state->pending_tap = true;
+                        state->pending_tap_keycode = tap_keycode;
 
-                    return false; // Skip default handling - no character should be typed
+                        // Don't activate one-shot yet - wait a bit longer to distinguish from rapid repeat
+                        return false;
+                    }
                 } else {
-                    // Time exceeded - send the previous pending tap first
-                    tap_code(state->pending_tap_keycode);
-                    state->pending_tap = false;
-                    state->pending_tap_keycode = 0;
+                    // Time exceeded for double tap
+                    if (state->tap_count == 2) {
+                        // We had exactly 2 taps with proper timing - activate one-shot
+                        set_oneshot_mods(mod);
+                        set_oneshot_layer(layer, ONESHOT_START);
+
+                        // Clear state
+                        state->pending_tap = false;
+                        state->pending_tap_keycode = 0;
+                        state->last_tap_time = 0;
+                        state->tap_count = 0;
+
+                        return false; // Skip default handling - no character should be typed
+                    } else {
+                        // Normal timeout - send the previous pending tap first
+                        tap_code(state->pending_tap_keycode);
+                        state->pending_tap = false;
+                        state->pending_tap_keycode = 0;
+                    }
                 }
             }
 
@@ -133,6 +147,7 @@ bool process_handle_key_actions(uint16_t keycode, keyrecord_t* record, double_ho
         state->last_hold_time = 0;
         state->current_press_time = 0;
         state->was_actually_held  = false;
+        state->tap_and_hold_active = false;
         return true; // Let QMK handle tap release normally
     }
 
@@ -141,11 +156,29 @@ bool process_handle_key_actions(uint16_t keycode, keyrecord_t* record, double_ho
         state->current_press_time = current_time;
         state->was_actually_held  = false;
 
-        // Clear tap tracking and pending taps when starting a hold
+        // If we have a pending tap, this is a tap-and-hold scenario
+        // Let QMK handle this normally to get proper key repeat behavior
+        if (state->pending_tap) {
+            // Clear our pending tap state but let QMK process this hold event normally
+            state->last_tap_time = 0;
+            state->tap_count = 0;
+            state->pending_tap = false;
+            state->pending_tap_keycode = 0;
+            
+            // This is tap-and-hold, not a pure hold, so don't use it for double hold timing
+            state->tap_and_hold_active = true;
+            state->double_hold_active = false;
+            
+            // Let QMK handle the tap-and-hold behavior (tap + repeat while held)
+            return true;
+        }
+
+        // Clear tap tracking and pending taps when starting a pure hold
         state->last_tap_time = 0;
         state->tap_count = 0;
         state->pending_tap = false;
         state->pending_tap_keycode = 0;
+        state->tap_and_hold_active = false;
 
         // Check if this is a double hold (hold within timeout of previous hold)
         // Add timer wraparound protection
@@ -184,6 +217,14 @@ bool process_handle_key_actions(uint16_t keycode, keyrecord_t* record, double_ho
             state->current_press_time = 0;
             state->was_actually_held  = false;
             return false; // Skip default handling
+        } else if (state->tap_and_hold_active) {
+            // Clean up tap-and-hold state
+            // QMK handled the modifier, so we just clear our tracking
+            state->tap_and_hold_active = false;
+            state->current_press_time = 0;
+            state->was_actually_held  = false;
+            // Don't set last_hold_time for tap-and-hold since it wasn't a pure hold
+            return true; // Let QMK handle the release normally
         } else {
             // Only record timestamp if held long enough to be a legitimate hold
             uint16_t current_time  = timer_read();
@@ -238,7 +279,7 @@ bool process_handle_key_actions(uint16_t keycode, keyrecord_t* record, double_ho
     X(gui_x, LGUI_T(KC_X), KC_X, 6, MOD_LGUI)
 
 // Generate state variables for each key using the unique identifier
-#define X(id, keycode, tap_key, layer, mod) static double_hold_state_t id##_state = {0, 0, false, false, 0, 0, false, 0};
+#define X(id, keycode, tap_key, layer, mod) static double_hold_state_t id##_state = {0, 0, false, false, 0, 0, false, 0, false};
 DOUBLE_HOLD_KEYS
 #undef X
 
@@ -312,6 +353,9 @@ void keyboard_post_init_user(void) {
     // debug_keyboard=true;
     // debug_mouse=true;
     rgblight_layers = sval_rgb_layers;
+
+    // Enable one-shot functionality for one-shot layers to work properly
+    oneshot_enable();
 }
 
 enum layer {
@@ -460,9 +504,18 @@ void check_pending_taps(void) {
             pending_time_diff = (0xFFFF - id##_state.last_tap_time) + current_time; \
         } \
         if (pending_time_diff >= DOUBLE_TAP_TIMEOUT) { \
-            tap_code(id##_state.pending_tap_keycode); \
+            if (id##_state.tap_count == 2) { \
+                /* We had exactly 2 taps and timeout expired - activate one-shot */ \
+                set_oneshot_mods(mod); \
+                set_oneshot_layer(layer, ONESHOT_START); \
+            } else { \
+                /* Normal timeout - send the pending tap */ \
+                tap_code(id##_state.pending_tap_keycode); \
+            } \
             id##_state.pending_tap = false; \
             id##_state.pending_tap_keycode = 0; \
+            id##_state.tap_count = 0; \
+            id##_state.last_tap_time = 0; \
         } \
     }
     DOUBLE_HOLD_KEYS
