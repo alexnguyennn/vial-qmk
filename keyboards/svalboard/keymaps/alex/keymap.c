@@ -26,6 +26,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include <stdint.h>
 #include "svalboard.h"
 #include "vial.h"
+#include "caps_word.h"
 // start from last custom qk keycode in keymap_support.h
 // keys we want to show in vial should be QK_KB_0 onwards
 #define RANGE_START SV_SAFE_RANGE
@@ -46,7 +47,7 @@ typedef struct {
 
 #define DOUBLE_HOLD_TIMEOUT 500 // milliseconds
 #define MIN_HOLD_DURATION 50    // milliseconds - much lower to catch permissive hold triggers
-#define DOUBLE_TAP_TIMEOUT 100  // milliseconds - tight timeout for double tap detection
+#define DOUBLE_TAP_TIMEOUT 120  // milliseconds - tight timeout for double tap detection
 
 // Custom one-shot layer state
 static uint8_t custom_oneshot_layer        = 0;
@@ -72,6 +73,24 @@ bool process_handle_key_actions(uint16_t keycode, keyrecord_t* record, double_ho
     // If this is any kind of tap event, handle double tap detection
     if (record->tap.count > 0) {
         if (record->event.pressed) {
+            // Special handling when caps word is active: allow letters to process normally
+            // so caps word can modify them. Only use double tap logic for letters when caps word is off.
+            bool is_letter = (tap_keycode >= KC_A && tap_keycode <= KC_Z);
+            if (is_letter && is_caps_word_on()) {
+                // Clear any pending tap state for this key and let QMK handle it normally
+                state->pending_tap         = false;
+                state->pending_tap_keycode = 0;
+                state->last_tap_time       = 0;
+                state->tap_count           = 0;
+
+                // Clear double hold tracking on taps to prevent interference
+                state->last_hold_time     = 0;
+                state->current_press_time = 0;
+                state->was_actually_held  = false;
+
+                return true; // Let QMK and caps word process this normally
+            }
+
             // Check if we have a pending tap (potential double tap)
             if (state->pending_tap) {
                 uint16_t time_diff = current_time - state->last_tap_time;
@@ -81,13 +100,9 @@ bool process_handle_key_actions(uint16_t keycode, keyrecord_t* record, double_ho
                 }
 
                 if (time_diff < DOUBLE_TAP_TIMEOUT) {
-                    // Double tap detected - activate one-shot mod and custom one-shot layer
+                    // Double tap detected - activate one-shot mod and one-shot layer using standard QMK functions
                     set_oneshot_mods(mod);
-
-                    // Custom one-shot layer implementation
-                    custom_oneshot_layer        = layer;
-                    custom_oneshot_layer_active = true;
-                    layer_on(layer);
+                    set_oneshot_layer(layer, ONESHOT_START);
 
                     // Clear pending tap and tracking to prevent character output
                     state->pending_tap = false;
@@ -132,9 +147,6 @@ bool process_handle_key_actions(uint16_t keycode, keyrecord_t* record, double_ho
         state->pending_tap = false;
         state->pending_tap_keycode = 0;
 
-        // Clear custom one-shot layer if active (redundant with process_record_user but ensures consistency)
-        clear_custom_oneshot_layer();
-
         // Check if this is a double hold (hold within timeout of previous hold)
         // Add timer wraparound protection
         if (state->last_hold_time != 0) {
@@ -148,9 +160,6 @@ bool process_handle_key_actions(uint16_t keycode, keyrecord_t* record, double_ho
                 // Double hold detected - clear oneshot state before activating persistent mod/layer
                 clear_oneshot_mods();
                 reset_oneshot_layer();
-
-                // Clear custom one-shot layer if active
-                clear_custom_oneshot_layer();
 
                 // Activate mod + layer
                 register_mods(mod);
@@ -234,11 +243,9 @@ DOUBLE_HOLD_KEYS
 #undef X
 
 bool process_record_user(uint16_t keycode, keyrecord_t* record) {
-    // On any key press, flush pending taps from OTHER keys to improve typing flow
     if (record->event.pressed) {
-        // Check if we need to clear custom one-shot layer
-        clear_custom_oneshot_layer();
-
+        // On any key press, flush pending taps from OTHER keys to improve typing flow
+        // But be conservative to avoid interfering with caps word and other QMK features
         // Flush pending taps from all keys except the current one
 #define X(id, keycode_check, tap_key, layer, mod)             \
     if (keycode != keycode_check && id##_state.pending_tap) { \
@@ -246,7 +253,7 @@ bool process_record_user(uint16_t keycode, keyrecord_t* record) {
         id##_state.pending_tap         = false;               \
         id##_state.pending_tap_keycode = 0;                   \
     }
-        DOUBLE_HOLD_KEYS
+    DOUBLE_HOLD_KEYS
 #undef X
     }
 
@@ -259,7 +266,7 @@ bool process_record_user(uint16_t keycode, keyrecord_t* record) {
 #undef X
 
         default:
-            return true;
+            return true; // Continue processing for all other keys
     }
     return true;
 }
