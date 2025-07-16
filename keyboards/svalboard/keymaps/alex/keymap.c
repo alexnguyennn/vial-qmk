@@ -27,11 +27,10 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "svalboard.h"
 #include "vial.h"
 // start from last custom qk keycode in keymap_support.h
-// SV_SAFE_RANGE is for safe keys only in qmk
 // keys we want to show in vial should be QK_KB_0 onwards
-#define RANGE_START SV_TOGGLE_AUTOMOUSE + 1
+#define RANGE_START SV_SAFE_RANGE
 
-enum custom_keycodes { SPACE_HYPR_L5 = RANGE_START };
+// enum custom_keycodes { CUSTOM_CODE = RANGE_START };
 
 // Double hold functionality
 typedef struct {
@@ -155,13 +154,6 @@ DOUBLE_HOLD_KEYS
 
 bool process_record_user(uint16_t keycode, keyrecord_t* record) {
     switch (keycode) {
-        case SPACE_HYPR_L5:
-            if (record->event.pressed) {
-                // Send the string "hello" when the key is pressed
-                send_string("hello");
-                return false;
-            }
-
 // Generate case statements for all double hold keys
 #define X(id, keycode, tap_key, layer, mod) \
     case keycode:                           \
