@@ -1087,7 +1087,7 @@
       200
     ]
   ],
-  "uid": 5199957870438586395,
+  "uid": 5199957870438586000,
   "version": 1,
   "via_protocol": 9,
   "vial_protocol": 6,
@@ -1586,12 +1586,12 @@
     ],
     [
       [
-        "KC_NO",
-        "KC_NO",
-        "KC_NO",
-        "KC_NO",
-        "KC_NO",
-        "KC_NO"
+        "KC_TRNS",
+        "KC_TRNS",
+        "KC_TRNS",
+        "KC_TRNS",
+        "KC_TRNS",
+        "KC_TRNS"
       ],
       [
         "KC_RBRACKET",
@@ -1626,12 +1626,12 @@
         "QK_BASIC_MAX"
       ],
       [
-        "KC_NO",
-        "KC_NO",
-        "KC_NO",
-        "KC_0",
-        "KC_NO",
-        "KC_NO"
+        "KC_TRNS",
+        "KC_TRNS",
+        "KC_TRNS",
+        "KC_TRNS",
+        "KC_TRNS",
+        "KC_TRNS"
       ],
       [
         "KC_1",
@@ -1654,7 +1654,7 @@
         "KC_NO",
         "KC_6",
         "KC_9",
-        "KC_NO",
+        "KC_0",
         "QK_BASIC_MAX"
       ],
       [
