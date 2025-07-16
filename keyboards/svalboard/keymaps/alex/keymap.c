@@ -38,17 +38,51 @@ typedef struct {
     uint16_t current_press_time;
     bool     double_hold_active;
     bool     was_actually_held; // Track if this was a real hold vs quick press
+    uint16_t last_tap_time;       // Time of last completed tap
+    uint8_t  tap_count;           // Number of taps in sequence
 } double_hold_state_t;
 
 #define DOUBLE_HOLD_TIMEOUT 500 // milliseconds
 #define MIN_HOLD_DURATION 50    // milliseconds - much lower to catch permissive hold triggers
+#define DOUBLE_TAP_TIMEOUT 350  // milliseconds - timeout for double tap detection
 
 // Generic function to handle double hold behavior
 // Returns true if QMK should continue with default processing, false if handled
 bool process_handle_key_actions(uint16_t keycode, keyrecord_t* record, double_hold_state_t* state, uint16_t tap_keycode, uint8_t layer, uint8_t mod, uint16_t timeout) {
-    // If this is any kind of tap event, let QMK handle it completely
-    // This preserves rapid tapping, tap+hold, and all mod-tap settings
+    // If this is any kind of tap event, handle double tap detection
     if (record->tap.count > 0) {
+        if (record->event.pressed) {
+            // Track tap timing for double tap detection
+            uint16_t current_time = timer_read();
+            
+            // Check for double tap (two taps within timeout)
+            if (state->last_tap_time != 0) {
+                uint16_t time_diff = current_time - state->last_tap_time;
+                // Handle timer wraparound
+                if (current_time < state->last_tap_time) {
+                    time_diff = (0xFFFF - state->last_tap_time) + current_time;
+                }
+                
+                if (time_diff < DOUBLE_TAP_TIMEOUT) {
+                    // Double tap detected - activate one-shot mod and one-shot layer
+                    set_oneshot_mods(mod);
+                    set_oneshot_layer(layer, ONESHOT_START);
+                    
+                    // Clear tap tracking to prevent triple tap
+                    state->last_tap_time = 0;
+                    state->tap_count = 0;
+                    
+                    // Send the tap keycode for this tap
+                    tap_code(tap_keycode);
+                    return false; // Skip default handling since we sent the keycode
+                }
+            }
+            
+            // Record this tap time
+            state->last_tap_time = current_time;
+            state->tap_count = 1;
+        }
+        
         // Clear any double hold tracking on taps to prevent interference
         state->last_hold_time = 0;
         state->current_press_time = 0;
@@ -61,6 +95,10 @@ bool process_handle_key_actions(uint16_t keycode, keyrecord_t* record, double_ho
         uint16_t current_time = timer_read();
         state->current_press_time = current_time;
         state->was_actually_held  = false;
+
+        // Clear tap tracking when starting a hold
+        state->last_tap_time = 0;
+        state->tap_count = 0;
 
         // Check if this is a double hold (hold within timeout of previous hold)
         // Add timer wraparound protection
@@ -148,7 +186,7 @@ bool process_handle_key_actions(uint16_t keycode, keyrecord_t* record, double_ho
     X(gui_x, LGUI_T(KC_X), KC_X, 6, MOD_LGUI)
 
 // Generate state variables for each key using the unique identifier
-#define X(id, keycode, tap_key, layer, mod) static double_hold_state_t id##_state = {0, 0, false, false};
+#define X(id, keycode, tap_key, layer, mod) static double_hold_state_t id##_state = {0, 0, false, false, 0, 0};
 DOUBLE_HOLD_KEYS
 #undef X
 
