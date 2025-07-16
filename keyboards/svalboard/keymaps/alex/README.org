@@ -22,6 +22,15 @@ You’ll need to flash both sides when updating FW. To do this, each side will n
   - for some reason =KC_NORMAL_HOLD/KC_FUNC_HOLD= aren't actually declared in vial.json so we can actually bind from =SAFE_RANGE=
 - if you do want them bindable in Vial/keybard, you'll need to make sure it's indexed from =QK_KB_0= (see [[https://get.vial.today/docs/custom_keycode.html][vial docs]])
 - can't declare a macro to be a custom key alias (e.g. =#define KEY LCTL_T(KC_0)= and then alias =KEY=)
+** double tap advanced modifier attempt
+- still has issues
+- osm + osl works but gets stuck in layer
+  - tapping osl instead doesn't work
+  - claude implementation of custom osl tracking doesn't work (maybe try again and fix bugs)
+- key repeat doesn't work anymore (custom tap+ hold handling but we can't repeat)
+- the delay to check single key slows down the mod component of a mt (even with flushing on diff key); since it's a hold on the same key (guess we need to wait out that double tap timer before it considers a hold)
+- different keys have ideal timeouts, something like homerow or e/i are quick to double tap
+- given the above, reverted for now but keeping for future revisitation
 * Links
 - [[https://github.com/vial-kb/vial-qmk/issues/820#issuecomment-2727564994][useful comment]]
   - walks through idea of customising default mod tap behaviour
