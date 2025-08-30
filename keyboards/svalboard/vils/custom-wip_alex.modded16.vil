@@ -1422,10 +1422,10 @@
     ],
     [
       [
-        "KC_TAB",
-        "KC_GRAVE",
-        "KC_SPACE",
-        "KC_BSPACE",
+        "KC_TRNS",
+        "KC_TRNS",
+        "KC_TRNS",
+        "KC_TRNS",
         "KC_TRNS",
         "KC_TRNS"
       ],
@@ -1462,10 +1462,10 @@
         "QK_BASIC_MAX"
       ],
       [
-        "KC_APPLICATION",
-        "KC_DELETE",
-        "KC_ESCAPE",
-        "KC_ENTER",
+        "KC_TRNS",
+        "KC_TRNS",
+        "KC_TRNS",
+        "KC_TRNS",
         "KC_TRNS",
         "KC_TRNS"
       ],
@@ -1586,12 +1586,12 @@
     ],
     [
       [
-        "KC_NO",
-        "KC_NO",
-        "KC_NO",
-        "KC_NO",
-        "KC_NO",
-        "KC_NO"
+        "KC_TRNS",
+        "KC_TRNS",
+        "KC_TRNS",
+        "KC_TRNS",
+        "KC_TRNS",
+        "KC_TRNS"
       ],
       [
         "KC_RBRACKET",
@@ -1626,12 +1626,12 @@
         "QK_BASIC_MAX"
       ],
       [
-        "KC_NO",
-        "KC_NO",
-        "KC_NO",
-        "KC_0",
-        "KC_NO",
-        "KC_NO"
+        "KC_TRNS",
+        "KC_TRNS",
+        "KC_TRNS",
+        "KC_TRNS",
+        "KC_TRNS",
+        "KC_TRNS"
       ],
       [
         "KC_1",
@@ -1651,7 +1651,7 @@
       ],
       [
         "KC_3",
-        "KC_NO",
+        "KC_0",
         "KC_6",
         "KC_9",
         "KC_NO",
