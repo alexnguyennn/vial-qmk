@@ -22,6 +22,14 @@ You’ll need to flash both sides when updating FW. To do this, each side will n
   - for some reason =KC_NORMAL_HOLD/KC_FUNC_HOLD= aren't actually declared in vial.json so we can actually bind from =SAFE_RANGE=
 - if you do want them bindable in Vial/keybard, you'll need to make sure it's indexed from =QK_KB_0= (see [[https://get.vial.today/docs/custom_keycode.html][vial docs]])
 - can't declare a macro to be a custom key alias (e.g. =#define KEY LCTL_T(KC_0)= and then alias =KEY=)
+** Syncing repo with upstream
+- in order:
+  - fetch upstream
+  - reset vial branch to  upstream/vial
+  - push customise branch to remote
+  - reset customise branch to upstream/vial
+  - cherry pick from origin/initial-customise branch
+    - note: leave out commits that remove keyboards and manually - will overwhelm git otherwise
 * Links
 - [[https://github.com/vial-kb/vial-qmk/issues/820#issuecomment-2727564994][useful comment]]
   - walks through idea of customising default mod tap behaviour
