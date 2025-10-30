@@ -1138,7 +1138,7 @@
         "LT2(KC_DELETE)",
         "LT5(KC_ESCAPE)",
         "LT4(KC_ENTER)",
-        "OSL(2)",
+        "KC_NO",
         "KC_NO"
       ],
       [
@@ -1471,7 +1471,7 @@
       ],
       [
         "KC_MINUS",
-        "KC_QUOTE",
+        "KC_KP_PLUS",
         "KC_7",
         "LSFT(KC_7)",
         "KC_6",
@@ -1479,7 +1479,7 @@
       ],
       [
         "KC_COMMA",
-        "LSFT(KC_SCOLON)",
+        "KC_KP_DOT",
         "KC_8",
         "KC_KP_ASTERISK",
         "LSFT(KC_6)",
@@ -1568,7 +1568,7 @@
         "QK_BASIC_MAX"
       ],
       [
-        "KC_NO",
+        "KC_PSCREEN",
         "KC_NO",
         "KC_RIGHT",
         "KC_END",
@@ -1635,7 +1635,7 @@
       ],
       [
         "KC_1",
-        "LSFT(KC_EQUAL)",
+        "KC_KP_PLUS",
         "KC_4",
         "KC_7",
         "KC_EQUAL",
@@ -1643,10 +1643,10 @@
       ],
       [
         "KC_2",
-        "KC_TRNS",
+        "KC_KP_DOT",
         "KC_5",
         "KC_8",
-        "KC_NO",
+        "KC_KP_ASTERISK",
         "QK_BASIC_MAX"
       ],
       [
@@ -2367,7 +2367,7 @@
         "KC_BTN2",
         "KC_BTN1",
         "KC_TRNS",
-        "KC_TRNS",
+        "USER14",
         "USER14",
         "KC_TRNS"
       ],
