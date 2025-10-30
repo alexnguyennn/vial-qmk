@@ -332,10 +332,15 @@ bool get_auto_shift_no_auto_repeat(uint16_t keycode, keyrecord_t *record) {
     return QS_auto_shift_no_auto_repeat;
 }
 
-bool get_chordal_hold(uint16_t tap_hold_keycode, keyrecord_t* tap_hold_record,
-                      uint16_t other_keycode, keyrecord_t* other_record) {
-    if (QS_tapping_chordal_hold)
+// NOTE https://docs.qmk.fm/tap_hold#chordal-hold
+// results in a link conflict if done in keymap
+bool get_chordal_hold(uint16_t tap_hold_keycode, keyrecord_t *tap_hold_record, uint16_t other_keycode, keyrecord_t *other_record) {
+    if (QS_tapping_chordal_hold) {
+        if (tap_hold_record->event.key.row == 0 || tap_hold_record->event.key.row == 5 || other_record->event.key.row == 0 || other_record->event.key.row == 5) {
+            return true;
+        }
         return get_chordal_hold_default(tap_hold_record, other_record);
+    }
     return true;
 }
 

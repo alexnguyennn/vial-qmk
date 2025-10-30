@@ -6,20 +6,31 @@
 // Vial security combos, depending on which unit this is...
 #ifdef INIT_EE_HANDS_RIGHT
 // right thumb lock
-#define VIAL_UNLOCK_COMBO_ROWS { 5, 5 }
-#define VIAL_UNLOCK_COMBO_COLS { 0, 1 }
+#    define VIAL_UNLOCK_COMBO_ROWS {5, 5}
+#    define VIAL_UNLOCK_COMBO_COLS {0, 1}
 #elif INIT_EE_HANDS_LEFT
 // left thumb lock
-#define VIAL_UNLOCK_COMBO_ROWS { 0, 0 }
-#define VIAL_UNLOCK_COMBO_COLS { 0, 1 }
+#    define VIAL_UNLOCK_COMBO_ROWS {0, 0}
+#    define VIAL_UNLOCK_COMBO_COLS {0, 1}
 #else
 // both thumb locks
-#define VIAL_UNLOCK_COMBO_ROWS { 0, 0, 5, 5 }
-#define VIAL_UNLOCK_COMBO_COLS { 2, 5, 2, 5 }
+#    define VIAL_UNLOCK_COMBO_ROWS {0, 0, 5, 5}
+#    define VIAL_UNLOCK_COMBO_COLS {2, 5, 2, 5}
 #endif
 
 // Shorten the unlock timeout (needs mod in `quantum/vial.c`; without
 // it the override doesn't work)
 #define VIAL_UNLOCK_COUNTER_MAX 12
 
-#define ACHORDION_STREAK
+//  NOTE: now set in info.json (or build_vial.mk?!)
+// builddefs/build_vial.mk sets default options for chordal hold and flow tap
+// https://getreuer.info/posts/keyboards/achordion/index.html#relationship-between-achordion-and-chordal-hold
+// #define CHORDAL_HOLD
+// blog suggests longer tapping term to accommodate single hold
+//  detection pipeline
+// #define TAPPING_TERM 250
+
+//  NOTE: set in build recipe -> overwritten by qmk_settings?
+// https://docs.qmk.fm/tap_hold#flow-tap
+// #undef FLOW_TAP_TERM
+// #define FLOW_TAP_TERM 150

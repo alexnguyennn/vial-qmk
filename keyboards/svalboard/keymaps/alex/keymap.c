@@ -50,7 +50,7 @@ bool process_handle_key_actions(uint16_t keycode, keyrecord_t* record, double_ho
     // This preserves rapid tapping, tap+hold, and all mod-tap settings
     if (record->tap.count > 0) {
         // Clear any double hold tracking on taps to prevent interference
-        state->last_hold_time = 0;
+        state->last_hold_time     = 0;
         state->current_press_time = 0;
         state->was_actually_held  = false;
         return true; // Let QMK handle all tap behavior naturally
@@ -58,7 +58,7 @@ bool process_handle_key_actions(uint16_t keycode, keyrecord_t* record, double_ho
 
     // Only handle pure hold events for double hold functionality
     if (record->event.pressed) {
-        uint16_t current_time = timer_read();
+        uint16_t current_time     = timer_read();
         state->current_press_time = current_time;
         state->was_actually_held  = false;
 
@@ -158,7 +158,7 @@ bool process_record_user(uint16_t keycode, keyrecord_t* record) {
 #define X(id, keycode, tap_key, layer, mod) \
     case keycode:                           \
         return process_handle_key_actions(keycode, record, &id##_state, tap_key, layer, mod, DOUBLE_HOLD_TIMEOUT);
-            DOUBLE_HOLD_KEYS
+        DOUBLE_HOLD_KEYS
 #undef X
 
         default:
@@ -324,23 +324,3 @@ const uint16_t PROGMEM keymaps[DYNAMIC_KEYMAP_LAYER_COUNT][MATRIX_ROWS][MATRIX_C
 
 };
 // clang-format on
-
-uint16_t achordion_timeout(uint16_t tap_hold_keycode) {
-    // Configure 0 timeout for thumb cluster keys to make them immediately responsive
-    switch (tap_hold_keycode) {
-        // Thumb cluster keys from the keymap
-        case LT(4, KC_BACKSPACE): // leftpad
-        case LT(4, KC_ENTER):     // rightpad
-            return 0;             // Bypass Achordion timeout for thumb keys
-    }
-
-    return 800; // Use 800ms timeout for all other tap-hold keys
-}
-
-bool achordion_chord(uint16_t tap_hold_keycode, keyrecord_t* tap_hold_record, uint16_t other_keycode, keyrecord_t* other_record) {
-    if (tap_hold_record->event.key.row == 0 || tap_hold_record->event.key.row == 5 || other_record->event.key.row == 0 || other_record->event.key.row == 5) {
-        return true;
-    }
-
-    return achordion_opposite_hands(tap_hold_record, other_record);
-}

@@ -30,6 +30,28 @@ You’ll need to flash both sides when updating FW. To do this, each side will n
   - reset customise branch to upstream/vial
   - cherry pick from origin/initial-customise branch
     - note: leave out commits that remove keyboards and manually - will overwhelm git otherwise
+*** Resolving conflicts
+    - =quantum/qmk_settings.c -> get_chord_hold= has an override
+      - defining this in keymap results in a conflict and overriding
+        allows us to keep the other qmk settings in vial
+        without going full manual
+** Vial QMK settings
+- currently using them to change settings on the fly if needed
+  ([[*Resolving conflicts][Resolving conflicts]] has an exception)
+ #+begin_src text
+Tapping Term          230
+Permissive Hold       ✓
+Hold On Other Key Press
+Retro Tapping         [ ]
+Quick Tap Term        200
+Tap Code Delay        0
+Tap Hold Caps Delay   80
+Tapping Toggle        5
+Chordal Hold          ✓
+Flow Tap              130
+[Combo ]
+Timeout: 50
+ #+end_src
 * Links
 - [[https://github.com/vial-kb/vial-qmk/issues/820#issuecomment-2727564994][useful comment]]
   - walks through idea of customising default mod tap behaviour
