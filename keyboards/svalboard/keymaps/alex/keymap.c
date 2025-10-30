@@ -152,6 +152,21 @@ bool process_handle_key_actions(uint16_t keycode, keyrecord_t* record, double_ho
 DOUBLE_HOLD_KEYS
 #undef X
 
+// layer tap to repeat last key but hold for layer 0
+// NOTE: can't bind LT_REP LT(NORMAL, KC_0) anywhere without it doing
+// this now
+#define LT_REP LT(3, KC_0)
+#define LT_REP_ALT LT(3, KC_1)
+
+bool remember_last_key_user(uint16_t keycode, keyrecord_t* record, uint8_t* remembered_mods) {
+    // NOTE: skip remembering for LT_REP to avoid interference with its tap behavior
+    //  Otherwise, pressing LT_REP will “remember” itself as the last key just before it gets handled, in which case repeating the last key does nothing.
+    if (keycode == LT_REP || keycode == LT_REP_ALT) {
+        return false;
+    }
+    return true;
+}
+
 bool process_record_user(uint16_t keycode, keyrecord_t* record) {
     switch (keycode) {
 // Generate case statements for all double hold keys
@@ -160,6 +175,19 @@ bool process_record_user(uint16_t keycode, keyrecord_t* record) {
         return process_handle_key_actions(keycode, record, &id##_state, tap_key, layer, mod, DOUBLE_HOLD_TIMEOUT);
         DOUBLE_HOLD_KEYS
 #undef X
+        case LT_REP:                               // 0 layer on hold, Repeat Key on tap.
+            if (record->tap.count) {               // On tap.
+                repeat_key_invoke(&record->event); // Repeat the last key.
+                return false;                      // Skip default handling.
+            }
+            break;
+
+        case LT_REP_ALT:                               // 3 layer on hold, Alt Repeat Key on tap.
+            if (record->tap.count) {                   // On tap.
+                alt_repeat_key_invoke(&record->event); // Repeat the last key.
+                return false;                          // Skip default handling.
+            }
+            break;
 
         default:
             return true;
@@ -172,7 +200,7 @@ bool process_record_user(uint16_t keycode, keyrecord_t* record) {
 LAYER_COLOR(layer0_colors, HSV_GREEN);  // NORMAL
 LAYER_COLOR(layer1_colors, HSV_GREEN);  // NORMAL_HOLD
 LAYER_COLOR(layer2_colors, HSV_ORANGE); // FUNC
-LAYER_COLOR(layer3_colors, HSV_ORANGE); // FUNC_HOLD
+LAYER_COLOR(layer3_colors, HSV_PURPLE); // FUNC_HOLD
 LAYER_COLOR(layer4_colors, HSV_AZURE);  // NAS
 LAYER_COLOR(layer5_colors, HSV_AZURE);  // would be NAS hold
 LAYER_COLOR(layer6_colors, HSV_RED);    // maybe 10kp
