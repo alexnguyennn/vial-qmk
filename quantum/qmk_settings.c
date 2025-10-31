@@ -346,7 +346,14 @@ bool get_chordal_hold(uint16_t tap_hold_keycode, keyrecord_t *tap_hold_record, u
 
 uint16_t get_flow_tap_term(uint16_t keycode, keyrecord_t *record, uint16_t prev_keycode) {
     if (is_flow_tap_key(keycode) && is_flow_tap_key(prev_keycode)) {
-        return QS.flow_tap_term;
+        switch (keycode) {
+            case LSFT_T(KC_V):
+            case LSFT_T(KC_M):
+                return QS.flow_tap_term - 25; // Short timeout on these keys.
+
+            default:
+                return QS.flow_tap_term;
+        }
     }
-    return 0;
+    return 0; // Disable Flow Tap.
 }
