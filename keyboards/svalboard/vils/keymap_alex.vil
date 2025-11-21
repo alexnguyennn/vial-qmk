@@ -259,7 +259,7 @@
       ],
       [
         "LSFT(KC_3)",
-        "KC_F12",
+        "LSFT(KC_0)",
         "LSFT(KC_6)",
         "LSFT(KC_9)",
         "KC_KP_PLUS",
@@ -284,9 +284,9 @@
       [
         "KC_TRNS",
         "KC_TRNS",
-        "KC_TRNS",
-        "KC_TRNS",
-        "KC_TRNS",
+        "M2",
+        "M4",
+        "M3",
         "0xff"
       ],
       [
@@ -340,7 +340,7 @@
         "KC_TRNS"
       ],
       [
-        "LSFT(KC_MINUS)",
+        "KC_9",
         "KC_5",
         "KC_4",
         "LSFT(KC_4)",
@@ -348,7 +348,7 @@
         "0xff"
       ],
       [
-        "LSFT(KC_5)",
+        "KC_8",
         "LSFT(KC_5)",
         "KC_3",
         "LSFT(KC_3)",
@@ -356,7 +356,7 @@
         "0xff"
       ],
       [
-        "LSFT(KC_GRAVE)",
+        "KC_7",
         "LSFT(KC_DOT)",
         "KC_2",
         "LSFT(KC_2)",
@@ -364,8 +364,8 @@
         "0xff"
       ],
       [
-        "KC_GRAVE",
-        "LSFT(KC_GRAVE)",
+        "KC_6",
+        "KC_0",
         "KC_1",
         "LSFT(KC_1)",
         "KC_ESCAPE",
@@ -423,10 +423,10 @@
       ],
       [
         "KC_3",
-        "KC_MINUS",
+        "KC_0",
         "KC_6",
         "KC_9",
-        "KC_KP_PLUS",
+        "KC_TRNS",
         "0xff"
       ],
       [
@@ -434,15 +434,15 @@
         "KC_0",
         "KC_5",
         "KC_8",
-        "KC_KP_DOT",
+        "KC_TRNS",
         "0xff"
       ],
       [
         "KC_1",
-        "KC_NO",
+        "KC_KP_PLUS",
         "KC_4",
         "KC_7",
-        "KC_NO",
+        "KC_KP_DOT",
         "0xff"
       ],
       [
@@ -470,19 +470,19 @@
         "0xff"
       ],
       [
-        "KC_LSHIFT",
-        "KC_NO",
+        "KC_TRNS",
+        "KC_TRNS",
         "KC_UP",
         "KC_HOME",
-        "KC_NO",
+        "KC_LSHIFT",
         "0xff"
       ],
       [
-        "KC_PSCREEN",
-        "KC_NO",
+        "KC_TRNS",
+        "KC_TRNS",
         "KC_RIGHT",
         "KC_END",
-        "KC_NO",
+        "KC_PSCREEN",
         "0xff"
       ],
       [
@@ -505,10 +505,10 @@
       ],
       [
         "KC_F3",
-        "KC_F12",
+        "KC_F10",
         "KC_F6",
         "KC_F9",
-        "KC_F11",
+        "KC_KP_PLUS",
         "0xff"
       ],
       [
@@ -521,10 +521,10 @@
       ],
       [
         "KC_F1",
-        "KC_NO",
+        "KC_F12",
         "KC_F4",
         "KC_F7",
-        "KC_NO",
+        "KC_F11",
         "0xff"
       ],
       [
@@ -1276,7 +1276,7 @@
       [
         "KC_BTN2",
         "KC_BTN1",
-        "KC_TRNS",
+        "KC_BTN1",
         "USER14",
         "USER14",
         "KC_TRNS"
@@ -1349,9 +1349,51 @@
         "KC_S"
       ]
     ],
-    [],
-    [],
-    [],
+    [
+      [
+        "down",
+        "KC_LCTRL"
+      ],
+      [
+        "tap",
+        "KC_C",
+        "KC_C"
+      ],
+      [
+        "up",
+        "KC_LCTRL"
+      ]
+    ],
+    [
+      [
+        "down",
+        "KC_LCTRL"
+      ],
+      [
+        "tap",
+        "KC_C",
+        "KC_K"
+      ],
+      [
+        "up",
+        "KC_LCTRL"
+      ]
+    ],
+    [
+      [
+        "down",
+        "KC_LCTRL"
+      ],
+      [
+        "tap",
+        "KC_C",
+        "KC_W"
+      ],
+      [
+        "up",
+        "KC_LCTRL"
+      ]
+    ],
     [],
     [],
     [],
@@ -1908,18 +1950,18 @@
       "KC_BTN2"
     ],
     [
+      "LT4(KC_BSPACE)",
+      "LT3(KC_0)",
       "KC_NO",
       "KC_NO",
-      "KC_NO",
-      "KC_NO",
-      "KC_NO"
+      "KC_LSPO"
     ],
     [
+      "LT4(KC_ENTER)",
+      "LT3(KC_1)",
       "KC_NO",
       "KC_NO",
-      "KC_NO",
-      "KC_NO",
-      "KC_NO"
+      "KC_RSPC"
     ],
     [
       "KC_NO",
@@ -2596,6 +2638,6 @@
     "24": 0,
     "25": 200,
     "26": 1,
-    "27": 55
+    "27": 40
   }
 }
