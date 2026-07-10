@@ -190,11 +190,11 @@
       "LCTL(KC_X)"
     ],
     [
+      "LCA_T(KC_G)",
+      "LCA_T(KC_H)",
       "KC_NO",
       "KC_NO",
-      "KC_NO",
-      "KC_NO",
-      "KC_NO"
+      "LCTL(KC_G)"
     ],
     [
       "KC_NO",
@@ -778,12 +778,12 @@
   ],
   "settings": {
     "1": 0,
-    "2": 50,
+    "2": 60,
     "3": 0,
     "4": 175,
     "5": 5,
     "6": 5000,
-    "7": 230,
+    "7": "220",
     "8": 10,
     "9": 30,
     "10": 20,
@@ -1667,7 +1667,7 @@
       ],
       [
         "KC_F2",
-        "KC_F10",
+        "KC_F11",
         "KC_F5",
         "KC_F8",
         "KC_KP_DOT",
@@ -2437,7 +2437,7 @@
       ],
       [
         "KC_TRNS",
-        "KC_BTN1",
+        "KC_BTN2",
         "KC_TRNS",
         "KC_TRNS",
         "KC_TRNS",
@@ -2445,7 +2445,7 @@
       ],
       [
         "KC_TRNS",
-        "KC_BTN2",
+        "KC_BTN1",
         "KC_TRNS",
         "KC_TRNS",
         "KC_TRNS",
