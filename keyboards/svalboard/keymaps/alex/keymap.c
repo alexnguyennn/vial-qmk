@@ -24,6 +24,8 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include QMK_KEYBOARD_H
 #include <stdbool.h>
 #include <stdint.h>
+#include <string.h>
+#include "raw_hid.h"
 #include "svalboard.h"
 #include "vial.h"
 // start from last custom qk keycode in keymap_support.h
@@ -217,8 +219,85 @@ LAYER_COLOR(layer15_colors, HSV_MAGENTA); // MBO
 
 const rgblight_segment_t* const __attribute((weak)) sval_rgb_layers[] = RGBLIGHT_LAYERS_LIST(layer0_colors, layer1_colors, layer2_colors, layer3_colors, layer4_colors, layer5_colors, layer6_colors, layer7_colors, layer8_colors, layer9_colors, layer10_colors, layer11_colors, layer12_colors, layer13_colors, layer14_colors, layer15_colors);
 
+// ---------------------------------------------------------------------------
+// QMK state broadcast (raw-HID) for tools/qmk-state-daemon.
+//
+// Push-only protocol: firmware emits a 32-byte snapshot whenever the layer
+// state, default layer, real/weak mods, or oneshot mods change. A periodic
+// heartbeat (every QMK_STATE_HEARTBEAT_MS) also fires so a late-starting
+// daemon receives fresh state within a bounded delay.
+//
+// Packet layout (v1) — see tools/qmk-state-daemon/src/handlers/state.rs
+// and PLAN_flow_tap_shift.md.
+// ---------------------------------------------------------------------------
+#define QMK_STATE_MSG_ID 0xAB
+#define QMK_STATE_VERSION 1
+#define QMK_STATE_PACKET_LEN 32
+#define QMK_STATE_HEARTBEAT_MS 5000
+
+#define QMK_REASON_LAYER 0x01
+#define QMK_REASON_DEFAULT_LAYER 0x02
+#define QMK_REASON_MODS 0x04
+#define QMK_REASON_OSM 0x08
+#define QMK_REASON_INITIAL 0x10
+
+static uint8_t  qmk_state_pending_reason = 0;
+static uint8_t  qmk_state_last_pkt[QMK_STATE_PACKET_LEN];
+static bool     qmk_state_last_valid = false;
+static uint32_t qmk_state_last_send_ms = 0;
+
+static void qmk_state_build(uint8_t reason, uint8_t out[QMK_STATE_PACKET_LEN]) {
+    memset(out, 0, QMK_STATE_PACKET_LEN);
+    out[0]              = QMK_STATE_MSG_ID;
+    out[1]              = QMK_STATE_VERSION;
+    out[2]              = reason;
+    out[3]              = get_highest_layer(layer_state);
+    out[4]              = get_highest_layer(default_layer_state);
+    uint32_t ls         = (uint32_t)layer_state;
+    out[5]              = (uint8_t)(ls & 0xFF);
+    out[6]              = (uint8_t)((ls >> 8) & 0xFF);
+    out[7]              = (uint8_t)((ls >> 16) & 0xFF);
+    out[8]              = (uint8_t)((ls >> 24) & 0xFF);
+    out[9]              = get_mods();
+    out[10]             = get_weak_mods();
+    out[11]             = get_oneshot_mods();
+    out[12]             = get_oneshot_locked_mods();
+}
+
+static void qmk_state_send(uint8_t reason) {
+    uint8_t pkt[QMK_STATE_PACKET_LEN];
+    qmk_state_build(reason, pkt);
+
+    // Debounce: skip if identical to the last packet, unless this is an
+    // initial snapshot (reason 0x10) which always sends.
+    if (reason != QMK_REASON_INITIAL && qmk_state_last_valid) {
+        // Compare everything except the reason byte so a redundant reason
+        // change alone does not spam packets.
+        bool same = true;
+        for (uint8_t i = 0; i < QMK_STATE_PACKET_LEN; ++i) {
+            if (i == 2) continue;
+            if (pkt[i] != qmk_state_last_pkt[i]) {
+                same = false;
+                break;
+            }
+        }
+        if (same) return;
+    }
+
+    raw_hid_send(pkt, QMK_STATE_PACKET_LEN);
+    memcpy(qmk_state_last_pkt, pkt, QMK_STATE_PACKET_LEN);
+    qmk_state_last_valid   = true;
+    qmk_state_last_send_ms = timer_read32();
+}
+
+static void qmk_state_mark(uint8_t reason) {
+    qmk_state_pending_reason |= reason;
+}
+// ---------------------------------------------------------------------------
+
 layer_state_t default_layer_state_set_user(layer_state_t state) {
     rgblight_set_layer_state(0, layer_state_cmp(state, 0));
+    qmk_state_mark(QMK_REASON_DEFAULT_LAYER);
     return state;
 }
 
@@ -226,7 +305,31 @@ layer_state_t layer_state_set_user(layer_state_t state) {
     for (int i = 0; i < RGBLIGHT_LAYERS; ++i) {
         rgblight_set_layer_state(i, layer_state_cmp(state, i));
     }
+    qmk_state_mark(QMK_REASON_LAYER);
     return state;
+}
+
+void post_process_record_user(uint16_t keycode, keyrecord_t* record) {
+    (void)keycode;
+    (void)record;
+    // Cheap: always mark mods; qmk_state_send() debounces on identical bytes.
+    qmk_state_mark(QMK_REASON_MODS | QMK_REASON_OSM);
+}
+
+void housekeeping_task_user(void) {
+    if (qmk_state_pending_reason != 0) {
+        qmk_state_send(qmk_state_pending_reason);
+        qmk_state_pending_reason = 0;
+        return;
+    }
+    // Heartbeat: re-emit last snapshot if idle for too long.
+    if (qmk_state_last_valid) {
+        uint32_t now = timer_read32();
+        if ((now - qmk_state_last_send_ms) >= QMK_STATE_HEARTBEAT_MS) {
+            // Force-send by bypassing debounce with the INITIAL reason.
+            qmk_state_send(QMK_REASON_INITIAL);
+        }
+    }
 }
 
 void keyboard_post_init_user(void) {
@@ -236,6 +339,9 @@ void keyboard_post_init_user(void) {
     // debug_keyboard=true;
     // debug_mouse=true;
     rgblight_layers = sval_rgb_layers;
+    // Prime the state broadcast so the daemon gets a snapshot without
+    // waiting for the first layer/mod change.
+    qmk_state_mark(QMK_REASON_INITIAL);
 }
 
 enum layer {
