@@ -72,6 +72,8 @@ static const qmk_settings_proto_t protos[] PROGMEM = {
    DECLARE_STATIC_SETTING(25, quick_tap_term),
    DECLARE_STATIC_BITSETTING(26, tapping_v2, QS_tapping_chordal_hold_bit),
    DECLARE_STATIC_SETTING(27, flow_tap_term),
+   DECLARE_STATIC_SETTING(28, flow_tap_shift_delta),
+   DECLARE_STATIC_SETTING(29, flow_tap_shift_min_clamp),
 };
 
 static void eeprom_settings_load(void) {
@@ -214,6 +216,8 @@ void qmk_settings_reset(void) {
     QS.tap_hold_caps_delay = TAP_HOLD_CAPS_DELAY;
     QS.tapping_toggle = TAPPING_TOGGLE;
     QS.flow_tap_term = 0;
+    QS.flow_tap_shift_delta = 25;
+    QS.flow_tap_shift_min_clamp = 15;
 
     eeprom_settings_save();
 
@@ -348,8 +352,16 @@ uint16_t get_flow_tap_term(uint16_t keycode, keyrecord_t *record, uint16_t prev_
     if (is_flow_tap_key(keycode) && is_flow_tap_key(prev_keycode)) {
         switch (keycode) {
             case LSFT_T(KC_V):
-            case LSFT_T(KC_M):
-                return QS.flow_tap_term - 25; // Short timeout on these keys.
+            case LSFT_T(KC_M): {
+                // Shift mod-taps: subtract user-tunable delta from base flow-tap
+                // term, clamped to a user-tunable floor. Prevents wrap on
+                // underflow. Defaults: delta=25, clamp=15.
+                uint16_t base  = QS.flow_tap_term;
+                uint16_t delta = QS.flow_tap_shift_delta;
+                uint16_t floor = QS.flow_tap_shift_min_clamp;
+                if (base > (uint32_t)delta + (uint32_t)floor) return base - delta;
+                return floor;
+            }
 
             default:
                 return QS.flow_tap_term;

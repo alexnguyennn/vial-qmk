@@ -52,6 +52,27 @@ Flow Tap              130
 [Combo ]
 Timeout: 50
  #+end_src
+** Custom QSIDs (28, 29) — shift-tap Flow Tap tuning
+- =quantum/qmk_settings.{h,c}= add two custom QSIDs beyond upstream Vial's stock set:
+  - QSID 28 =flow_tap_shift_delta= (uint16, default 25 ms) — ms to subtract from Flow Tap term for =LSFT_T(KC_V)= and =LSFT_T(KC_M)=
+  - QSID 29 =flow_tap_shift_min_clamp= (uint8, default 15 ms) — floor to prevent underflow / negative effective term
+- Effect: fast rolls like =space -> M -> S= still get Shift+S because the shift mod-taps use a shorter Flow Tap window than everything else. Chordal Hold still decides opposite-hand disambiguation.
+- These QSIDs are invisible in the Vial GUI (its descriptor tops out at QSID 27). Use =tools/vial-qs.py= to inspect/tune them.
+*** Adjusting via CLI
+ #+begin_src bash
+# list all supported QSIDs on the connected keyboard
+./tools/vial-qs.py list
+
+# read the current values
+./tools/vial-qs.py get 28   # flow_tap_shift_delta
+./tools/vial-qs.py get 29   # flow_tap_shift_min_clamp
+
+# tune (values in ms)
+./tools/vial-qs.py set 28 40    # bigger delta -> shorter effective term -> shift-taps easier
+./tools/vial-qs.py set 29 20    # raise the floor
+ #+end_src
+- Requires =pip install hid= (cython-hidapi wrapper).
+- *Close Vial GUI while scripting.* The GUI caches every QSID at connect time; if you tweak an unrelated slider afterwards it may write back a stale value for these custom fields.
 * Links
 - [[https://github.com/vial-kb/vial-qmk/issues/820#issuecomment-2727564994][useful comment]]
   - walks through idea of customising default mod tap behaviour
