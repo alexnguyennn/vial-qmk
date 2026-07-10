@@ -11,7 +11,7 @@ use qmk_state_daemon::output::FileStateWriter;
 use qmk_state_daemon::packet::Registry;
 use qmk_state_daemon::sketchybar::{NullNotifier, SketchybarNotifier};
 use qmk_state_daemon::transport::HidApiTransport;
-use qmk_state_daemon::{run, send_query, RunOptions};
+use qmk_state_daemon::{run, RunOptions};
 
 /// Default svalboard USB IDs (see keyboards/svalboard/info.json).
 const DEFAULT_VID: u16 = 0x303A;
@@ -28,10 +28,10 @@ struct Cli {
 enum Cmd {
     /// Run the daemon: read packets, write JSON, trigger sketchybar.
     Run(RunArgs),
-    /// Send a single query request to the keyboard and exit.
-    Query(DeviceArgs),
     /// Read one packet and exit (debug).
     Once(RunArgs),
+    /// List raw-HID capable HID devices with usage_page 0xFF60.
+    List,
 }
 
 #[derive(Args, Clone)]
@@ -56,10 +56,6 @@ struct RunArgs {
     /// Log instead of invoking sketchybar.
     #[arg(long)]
     dry_run: bool,
-
-    /// Skip the initial query on connect.
-    #[arg(long)]
-    no_query_on_start: bool,
 }
 
 fn parse_hex_u16(s: &str) -> Result<u16, String> {
@@ -72,11 +68,7 @@ fn main() -> Result<()> {
     match cli.cmd {
         Cmd::Run(args) => run_cmd(args, false),
         Cmd::Once(args) => run_cmd(args, true),
-        Cmd::Query(dev) => {
-            let mut t = HidApiTransport::open(dev.vid, dev.pid)?;
-            send_query(&mut t)?;
-            Ok(())
-        }
+        Cmd::List => list_cmd(),
     }
 }
 
@@ -87,7 +79,6 @@ fn run_cmd(args: RunArgs, once: bool) -> Result<()> {
 
     let opts = RunOptions {
         sketchybar_event: args.sketchybar_event.clone(),
-        query_on_start: !args.no_query_on_start,
         once,
         backoff: Some(Duration::from_millis(100)),
         max_backoff: Some(Duration::from_secs(1)),
@@ -110,4 +101,23 @@ fn run_cmd(args: RunArgs, once: bool) -> Result<()> {
             &opts,
         )
     }
+}
+
+fn list_cmd() -> Result<()> {
+    let api = hidapi::HidApi::new()?;
+    println!("VID:PID  usage_page/usage  serial               product");
+    for info in api.device_list() {
+        if info.usage_page() == 0xFF60 {
+            println!(
+                "{:04X}:{:04X}  {:04X}/{:04X}       {:<20} {}",
+                info.vendor_id(),
+                info.product_id(),
+                info.usage_page(),
+                info.usage(),
+                info.serial_number().unwrap_or(""),
+                info.product_string().unwrap_or("")
+            );
+        }
+    }
+    Ok(())
 }
