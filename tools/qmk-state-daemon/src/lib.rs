@@ -20,28 +20,10 @@ use crate::packet::Registry;
 use crate::sketchybar::Notifier;
 use crate::transport::HidTransport;
 
-pub const QUERY_MSG_ID: u8 = 0xAC;
-pub const QUERY_VERSION: u8 = 1;
 pub const PACKET_LEN: usize = STATE_PACKET_LEN;
-
-/// Build a full 32-byte query request packet.
-pub fn build_query_packet() -> [u8; PACKET_LEN] {
-    let mut buf = [0u8; PACKET_LEN];
-    buf[0] = QUERY_MSG_ID;
-    buf[1] = QUERY_VERSION;
-    buf
-}
-
-/// Send a query packet through the transport.
-pub fn send_query<T: HidTransport>(transport: &mut T) -> Result<()> {
-    let pkt = build_query_packet();
-    transport.write(&pkt)?;
-    Ok(())
-}
 
 pub struct RunOptions {
     pub sketchybar_event: String,
-    pub query_on_start: bool,
     pub once: bool,
     /// Backoff between failed reads. `None` = default 100ms with 1s cap.
     pub backoff: Option<Duration>,
@@ -52,7 +34,6 @@ impl Default for RunOptions {
     fn default() -> Self {
         Self {
             sketchybar_event: "qmk_state_changed".to_string(),
-            query_on_start: true,
             once: false,
             backoff: None,
             max_backoff: None,
@@ -62,8 +43,9 @@ impl Default for RunOptions {
 
 /// Run the main read → decode → write → notify loop.
 ///
-/// Returns when `once` is true and a packet was successfully processed,
-/// or when `transport.read` returns a non-retryable error path exhausts.
+/// Firmware pushes 0xAB state packets on every layer/mod change plus a
+/// periodic heartbeat, so the daemon is purely push-driven. Returns when
+/// `once` is true and a packet was successfully processed.
 pub fn run<T: HidTransport, W: StateWriter, N: Notifier>(
     transport: &mut T,
     registry: &Registry,
@@ -71,11 +53,6 @@ pub fn run<T: HidTransport, W: StateWriter, N: Notifier>(
     notifier: &N,
     opts: &RunOptions,
 ) -> Result<()> {
-    if opts.query_on_start {
-        // Best-effort; a fresh device may not be ready to receive yet.
-        let _ = send_query(transport);
-    }
-
     let initial_backoff = opts.backoff.unwrap_or(Duration::from_millis(100));
     let max_backoff = opts.max_backoff.unwrap_or(Duration::from_secs(1));
     let mut backoff = initial_backoff;
@@ -157,7 +134,6 @@ mod tests {
 
         let opts = RunOptions {
             once: true,
-            query_on_start: true,
             sketchybar_event: "qmk_state_changed".into(),
             backoff: Some(Duration::from_millis(0)),
             max_backoff: Some(Duration::from_millis(0)),
@@ -171,9 +147,8 @@ mod tests {
         )
         .unwrap();
 
-        // Query written on start.
-        assert_eq!(transport.writes.len(), 1);
-        assert_eq!(transport.writes[0][0], QUERY_MSG_ID);
+        // Push-only design: no writes expected.
+        assert!(transport.writes.is_empty());
 
         // One decoded payload written.
         let values = writer.values.lock().unwrap().clone();
@@ -199,7 +174,6 @@ mod tests {
 
         let opts = RunOptions {
             once: true,
-            query_on_start: false,
             sketchybar_event: "e".into(),
             backoff: Some(Duration::from_millis(0)),
             max_backoff: Some(Duration::from_millis(0)),
@@ -207,14 +181,5 @@ mod tests {
         run(&mut transport, &registry, &mut writer, &notifier, &opts).unwrap();
 
         assert_eq!(notifier.events(), vec!["e"]);
-    }
-
-    #[test]
-    fn query_packet_layout() {
-        let p = build_query_packet();
-        assert_eq!(p.len(), PACKET_LEN);
-        assert_eq!(p[0], QUERY_MSG_ID);
-        assert_eq!(p[1], QUERY_VERSION);
-        assert!(p[2..].iter().all(|&b| b == 0));
     }
 }
