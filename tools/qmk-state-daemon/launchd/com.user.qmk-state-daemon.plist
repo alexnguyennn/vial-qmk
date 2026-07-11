@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Install:
+    just install-launchd
+
+  Manual install:
+    sed "s|%HOME%|$HOME|g" com.user.qmk-state-daemon.plist \
+      > ~/Library/LaunchAgents/com.user.qmk-state-daemon.plist
+    launchctl bootstrap gui/$UID ~/Library/LaunchAgents/com.user.qmk-state-daemon.plist
+    launchctl enable gui/$UID/com.user.qmk-state-daemon
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.user.qmk-state-daemon</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>%HOME%/.local/bin/qmk-state-daemon</string>
+    <string>run</string>
+    <string>--state-file</string>
+    <string>/tmp/qmk_state.json</string>
+    <string>--sketchybar-event</string>
+    <string>qmk_state_changed</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>%HOME%/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>ThrottleInterval</key>
+  <integer>5</integer>
+  <key>StandardOutPath</key>
+  <string>%HOME%/Library/Logs/qmk-state-daemon.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>%HOME%/Library/Logs/qmk-state-daemon.err.log</string>
+  <key>ProcessType</key>
+  <string>Background</string>
+</dict>
+</plist>

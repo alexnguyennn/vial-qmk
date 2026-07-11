@@ -139,6 +139,7 @@ mod tests {
     use crate::handlers::state::{StateHandler, REASON_INITIAL, STATE_VERSION};
     use crate::mods::MOD_LSFT;
     use crate::output::StateWriter;
+    use crate::packet::PacketHandler;
     use crate::sketchybar::recording::RecordingNotifier;
     use crate::transport::mock::MockTransport;
     use serde_json::Value;
@@ -299,5 +300,114 @@ mod tests {
         run(&mut transport, &registry, &mut writer, &notifier, &opts).unwrap();
 
         assert_eq!(writer.values.lock().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn dedup_key_strips_reason_and_flags() {
+        let mut buf = state_packet();
+        buf[2] = REASON_INITIAL;
+        let v1 = StateHandler::new().decode(&buf).unwrap();
+        buf[2] = crate::handlers::state::REASON_LAYER
+            | crate::handlers::state::REASON_MODS;
+        let v2 = StateHandler::new().decode(&buf).unwrap();
+
+        assert_ne!(v1, v2, "raw payloads should differ (reason bytes)");
+        assert_eq!(
+            dedup_key(&v1),
+            dedup_key(&v2),
+            "dedup keys should be equal after stripping reason/reason_flags"
+        );
+        let stripped = dedup_key(&v1);
+        assert!(stripped.get("reason").is_none());
+        assert!(stripped.get("reason_flags").is_none());
+        assert!(stripped.get("top_layer_name").is_some());
+        assert!(stripped.get("mods_letters").is_some());
+    }
+
+    #[test]
+    fn dedups_multiple_consecutive_heartbeats() {
+        // Three identical heartbeats after the initial packet. Only
+        // the initial should fire the writer/notifier.
+        let seed = state_packet();
+        let reads: Vec<Result<Vec<u8>>> = vec![
+            Ok(seed.clone()),
+            Ok(heartbeat_packet_matching(&seed)),
+            Ok(heartbeat_packet_matching(&seed)),
+            Ok(heartbeat_packet_matching(&seed)),
+        ];
+        let mut transport = MockTransport::new(reads);
+        let registry = Registry::builder().handler(StateHandler::new()).build();
+        let mut writer = RecordingWriter::default();
+        let notifier = RecordingNotifier::new();
+
+        let opts = RunOptions {
+            once: false,
+            sketchybar_event: "e".into(),
+            backoff: Some(Duration::from_millis(0)),
+            max_backoff: Some(Duration::from_millis(0)),
+            max_reads: Some(4),
+        };
+        run(&mut transport, &registry, &mut writer, &notifier, &opts).unwrap();
+
+        assert_eq!(notifier.events(), vec!["e"]);
+        assert_eq!(writer.values.lock().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn resumes_firing_after_change_between_dupes() {
+        // A → A (dup) → B → B (dup) → A. Notifier should fire 3
+        // times: initial A, change to B, change back to A.
+        let a = state_packet();
+        let b = changed_packet(&a);
+        let reads: Vec<Result<Vec<u8>>> = vec![
+            Ok(a.clone()),
+            Ok(heartbeat_packet_matching(&a)),
+            Ok(b.clone()),
+            Ok(heartbeat_packet_matching(&b)),
+            Ok(a.clone()),
+        ];
+        let mut transport = MockTransport::new(reads);
+        let registry = Registry::builder().handler(StateHandler::new()).build();
+        let mut writer = RecordingWriter::default();
+        let notifier = RecordingNotifier::new();
+
+        let opts = RunOptions {
+            once: false,
+            sketchybar_event: "e".into(),
+            backoff: Some(Duration::from_millis(0)),
+            max_backoff: Some(Duration::from_millis(0)),
+            max_reads: Some(5),
+        };
+        run(&mut transport, &registry, &mut writer, &notifier, &opts).unwrap();
+
+        assert_eq!(notifier.events().len(), 3);
+        assert_eq!(writer.values.lock().unwrap().len(), 3);
+    }
+
+    #[test]
+    fn detects_change_in_mods_only() {
+        // Same top_layer, different mods. Must not be deduped.
+        let a = state_packet(); // has MOD_LSFT
+        let mut b = a.clone();
+        b[9] = crate::mods::MOD_LCTL; // swap Shift for Ctrl
+        let reads: Vec<Result<Vec<u8>>> = vec![Ok(a), Ok(b)];
+        let mut transport = MockTransport::new(reads);
+        let registry = Registry::builder().handler(StateHandler::new()).build();
+        let mut writer = RecordingWriter::default();
+        let notifier = RecordingNotifier::new();
+
+        let opts = RunOptions {
+            once: false,
+            sketchybar_event: "e".into(),
+            backoff: Some(Duration::from_millis(0)),
+            max_backoff: Some(Duration::from_millis(0)),
+            max_reads: Some(2),
+        };
+        run(&mut transport, &registry, &mut writer, &notifier, &opts).unwrap();
+
+        let values = writer.values.lock().unwrap().clone();
+        assert_eq!(values.len(), 2);
+        assert_eq!(values[0]["mods_letters"], "S");
+        assert_eq!(values[1]["mods_letters"], "C");
     }
 }
