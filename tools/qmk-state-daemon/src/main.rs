@@ -59,8 +59,12 @@ struct RunArgs {
 }
 
 fn parse_hex_u16(s: &str) -> Result<u16, String> {
-    let stripped = s.strip_prefix("0x").or_else(|| s.strip_prefix("0X")).unwrap_or(s);
-    u16::from_str_radix(stripped, 16).map_err(|e| e.to_string())
+    // Accept "0x303A", "0X303A", or plain decimal "12346".
+    if let Some(rest) = s.strip_prefix("0x").or_else(|| s.strip_prefix("0X")) {
+        u16::from_str_radix(rest, 16).map_err(|e| e.to_string())
+    } else {
+        s.parse::<u16>().map_err(|e| e.to_string())
+    }
 }
 
 fn main() -> Result<()> {
@@ -121,4 +125,28 @@ fn list_cmd() -> Result<()> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_hex_u16;
+
+    #[test]
+    fn parses_hex_prefix() {
+        assert_eq!(parse_hex_u16("0x303A").unwrap(), 0x303A);
+        assert_eq!(parse_hex_u16("0X4044").unwrap(), 0x4044);
+    }
+
+    #[test]
+    fn parses_decimal() {
+        // clap's default_value_t converts numeric defaults via .to_string(),
+        // yielding decimal — parser must accept this.
+        assert_eq!(parse_hex_u16("12346").unwrap(), 12346);
+    }
+
+    #[test]
+    fn rejects_out_of_range() {
+        assert!(parse_hex_u16("70000").is_err());
+        assert!(parse_hex_u16("0xFFFFF").is_err());
+    }
 }
