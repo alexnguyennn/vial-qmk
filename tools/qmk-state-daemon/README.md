@@ -43,12 +43,42 @@ chezmoi (`chezmoi re-add`). Do not persist before end-to-end works.
 
 ## CLI
 
-- `qmk-state-daemon run [--vid …] [--pid …] [--state-file …] [--sketchybar-event …] [--dry-run]`
-- `qmk-state-daemon once …` — read one packet and exit (debug).
+Daemon:
+- `qmk-state-daemon run [--vid …] [--pid …] [--state-file …] [--sketchybar-event …] [--socket …] [--dry-run]`
 - `qmk-state-daemon list` — enumerate raw-HID devices.
 
+RPC clients (require the daemon to be running):
+- `qmk-state-daemon ping [--socket …]` — health check.
+- `qmk-state-daemon qsid list` — enumerate custom QSIDs on the keyboard.
+- `qmk-state-daemon qsid get <qsid> [--width 1|2|4]` — read a QSID.
+- `qmk-state-daemon qsid set <qsid> <value> [--width 1|2|4]` — write a QSID.
+
+Widths for known QSIDs (see `src/vial_qsid.rs::known_qsids`) are
+resolved automatically. Custom QSIDs need `--width`.
+
 Defaults: VID/PID `0x303A:0x4044` (svalboard), state file
-`/tmp/qmk_state.json`, event `qmk_state_changed`.
+`/tmp/qmk_state.json`, event `qmk_state_changed`, socket
+`/tmp/qmk-state-daemon.sock`.
+
+## Architecture: one HID owner, socket-based RPC
+
+The daemon is the sole owner of the raw-HID interface. Both the push
+state pipeline (`0xAB` packets) and the Vial custom-QSID protocol
+(`0xFE 0x09/0x0A/0x0B`) share that one connection.
+
+Reader/writer are serialized in a single broker thread:
+1. `rpc::spawn_broker` owns the HID transport.
+2. Each loop iteration either services a pending outbound QSID
+   request (write + wait for response, dropping interleaved state
+   packets) or performs a normal read (routing `0xAB` packets to the
+   state pipeline).
+3. Only one QSID RPC is ever in flight, so no response-correlation
+   ID is needed.
+
+The socket server (`rpc::Server`) binds a Unix domain socket, accepts
+line-delimited JSON requests, and forwards them to the broker via an
+`mpsc` channel. Client commands (`qsid list|get|set`, `ping`) connect,
+send one request, read one response.
 
 ## JSON payload
 

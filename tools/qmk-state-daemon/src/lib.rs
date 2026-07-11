@@ -7,8 +7,10 @@ pub mod layer_names;
 pub mod mods;
 pub mod output;
 pub mod packet;
+pub mod rpc;
 pub mod sketchybar;
 pub mod transport;
+pub mod vial_qsid;
 
 use std::time::Duration;
 

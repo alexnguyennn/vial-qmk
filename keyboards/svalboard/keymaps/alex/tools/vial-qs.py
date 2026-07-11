@@ -1,5 +1,15 @@
-#!/usr/bin/env python3
-"""vial-qs: get/set arbitrary Vial QMK-Settings QSIDs over raw HID.
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.10"
+# dependencies = [
+#     "hidapi>=0.14",
+# ]
+# ///
+"""vial-qs: FALLBACK direct-HID CLI for Vial QMK-Settings QSIDs.
+
+Prefer the qmk-state-daemon RPC path (`qmk-state-daemon qsid list|get|set`
+or `just get 28` from this directory). Use this script only when the
+daemon isn't running.
 
 Motivation: Vial GUI only renders QSIDs listed in its bundled
 `qmk_settings.json` descriptor. Custom QSIDs added in `quantum/qmk_settings.c`
@@ -7,11 +17,11 @@ Motivation: Vial GUI only renders QSIDs listed in its bundled
 are invisible to the GUI. This script talks the exact same Vial protocol
 directly, so we can read/write custom QSIDs without forking Vial desktop.
 
-Concurrency: close Vial GUI while running this script. The GUI caches all
-QSID values at connect time and may write stale values back if you tweak
-other sliders after this script has modified a QSID.
+Concurrency: stop the daemon (`launchctl bootout gui/$UID/com.user.qmk-state-daemon`)
+before running this script — both hold the raw-HID interface exclusively.
+Also close Vial GUI while running.
 
-Requires: pip install hid  (cython-hidapi wrapper)
+Usage: `uv run --project . vial-qs.py list` (see justfile).
 """
 from __future__ import annotations
 

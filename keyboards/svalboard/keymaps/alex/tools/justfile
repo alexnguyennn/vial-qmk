@@ -1,0 +1,64 @@
+# Alex svalboard keymap tooling.
+#
+# Run `just` (or `just --list`) to see all recipes.
+#
+# QSID commands go through the qmk-state-daemon RPC socket, so the
+# daemon must be running (launchctl bootstrap com.user.qmk-state-daemon).
+# The Python script (vial-qs.py) is kept as a fallback for the case
+# where the daemon is stopped and you want direct HID access without
+# starting it.
+
+set shell := ["bash", "-euo", "pipefail", "-c"]
+
+DAEMON := "qmk-state-daemon"
+
+default:
+    @just --list
+
+# --- Vial QMK-Settings via daemon RPC (recommended) ---
+
+# List all supported QSIDs.
+list:
+    {{ DAEMON }} qsid list
+
+# Read a QSID value. Example: `just get 28`
+get qsid:
+    {{ DAEMON }} qsid get {{ qsid }}
+
+# Write a QSID value. Example: `just set 28 40`
+set qsid value:
+    {{ DAEMON }} qsid set {{ qsid }} {{ value }}
+
+# --- shortcuts for the flow-tap shift QSIDs (see keymap.c) ---
+
+flow-delta-get:
+    @just get 28
+
+flow-delta-set value:
+    @just set 28 {{ value }}
+
+flow-clamp-get:
+    @just get 29
+
+flow-clamp-set value:
+    @just set 29 {{ value }}
+
+flow-status:
+    @printf 'delta (qsid 28): ' && just get 28
+    @printf 'clamp (qsid 29): ' && just get 29
+
+# --- fallback: direct HID via Python (requires daemon stopped) ---
+
+# One-off `vial-qs.py` invocation via uv-managed env. Only useful when
+# the daemon isn't running (e.g. troubleshooting the daemon itself).
+py-list:
+    uv run --project . vial-qs.py list
+
+py-get qsid:
+    uv run --project . vial-qs.py get {{ qsid }}
+
+py-set qsid value:
+    uv run --project . vial-qs.py set {{ qsid }} {{ value }}
+
+sync:
+    uv sync
