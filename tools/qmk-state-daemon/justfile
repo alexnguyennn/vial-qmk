@@ -1,0 +1,91 @@
+# qmk-state-daemon developer & install commands.
+#
+# Run `just` (or `just --list`) to see all recipes.
+
+set shell := ["bash", "-euo", "pipefail", "-c"]
+
+BIN := "qmk-state-daemon"
+INSTALL_DIR := env_var_or_default("CARGO_INSTALL_ROOT", env_var("HOME") + "/.local") + "/bin"
+PLIST := "com.user.qmk-state-daemon.plist"
+PLIST_SRC := justfile_directory() + "/launchd/" + PLIST
+PLIST_DST := env_var("HOME") + "/Library/LaunchAgents/" + PLIST
+LAUNCHD_LABEL := "com.user.qmk-state-daemon"
+SB_ITEM_SRC := justfile_directory() + "/sketchybar/items/qmk.sh"
+SB_PLUGIN_SRC := justfile_directory() + "/sketchybar/plugins/qmk_state.sh"
+SB_CONFIG_DIR := env_var("HOME") + "/.config/sketchybar"
+
+default:
+    @just --list
+
+# --- build / test ---
+
+build:
+    cargo build --release
+
+test:
+    cargo test
+
+lint:
+    cargo clippy --all-targets -- -D warnings
+
+fmt:
+    cargo fmt
+
+# --- daemon install ---
+
+install: build
+    mkdir -p "{{ INSTALL_DIR }}"
+    install -m 0755 target/release/{{ BIN }} "{{ INSTALL_DIR }}/{{ BIN }}"
+    @echo "installed → {{ INSTALL_DIR }}/{{ BIN }}"
+
+uninstall:
+    rm -f "{{ INSTALL_DIR }}/{{ BIN }}"
+
+# --- launchd ---
+
+install-launchd: install
+    mkdir -p "$HOME/Library/LaunchAgents" "$HOME/Library/Logs"
+    sed "s|%HOME%|$HOME|g" "{{ PLIST_SRC }}" > "{{ PLIST_DST }}"
+    launchctl bootstrap gui/$UID "{{ PLIST_DST }}" 2>/dev/null || \
+      launchctl bootout gui/$UID "{{ PLIST_DST }}" && \
+      launchctl bootstrap gui/$UID "{{ PLIST_DST }}"
+    launchctl enable gui/$UID/{{ LAUNCHD_LABEL }}
+    launchctl kickstart -k gui/$UID/{{ LAUNCHD_LABEL }}
+    @echo "launchd agent loaded: {{ LAUNCHD_LABEL }}"
+    @echo "logs: ~/Library/Logs/qmk-state-daemon.{out,err}.log"
+
+uninstall-launchd:
+    -launchctl bootout gui/$UID "{{ PLIST_DST }}"
+    rm -f "{{ PLIST_DST }}"
+
+launchd-status:
+    launchctl print gui/$UID/{{ LAUNCHD_LABEL }} 2>/dev/null | head -30 || \
+      echo "not loaded"
+
+launchd-logs:
+    tail -F "$HOME/Library/Logs/qmk-state-daemon.out.log" "$HOME/Library/Logs/qmk-state-daemon.err.log"
+
+# --- sketchybar wiring (LIVE, not chezmoi) ---
+
+install-sketchybar:
+    mkdir -p "{{ SB_CONFIG_DIR }}/plugins" "{{ SB_CONFIG_DIR }}/items"
+    install -m 0755 "{{ SB_PLUGIN_SRC }}" "{{ SB_CONFIG_DIR }}/plugins/qmk_state.sh"
+    install -m 0755 "{{ SB_ITEM_SRC }}"   "{{ SB_CONFIG_DIR }}/items/qmk.sh"
+    @echo ""
+    @echo "sketchybar files installed. Now source items/qmk.sh from sketchybarrc:"
+    @echo ""
+    @echo "  source \"\$CONFIG_DIR/items/qmk.sh\""
+    @echo ""
+    @echo "Then run: sketchybar --reload"
+
+uninstall-sketchybar:
+    rm -f "{{ SB_CONFIG_DIR }}/plugins/qmk_state.sh" \
+          "{{ SB_CONFIG_DIR }}/items/qmk.sh"
+
+# --- convenience ---
+
+detect:
+    ./target/release/{{ BIN }} list
+
+run-dry:
+    ./target/release/{{ BIN }} run --dry-run
