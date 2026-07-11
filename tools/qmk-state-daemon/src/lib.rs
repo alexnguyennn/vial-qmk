@@ -17,7 +17,7 @@ use anyhow::Result;
 use crate::handlers::state::{STATE_MSG_ID, STATE_PACKET_LEN};
 use crate::output::StateWriter;
 use crate::packet::Registry;
-use crate::sketchybar::Notifier;
+use crate::sketchybar::{EventArg, Notifier};
 use crate::transport::HidTransport;
 
 pub const PACKET_LEN: usize = STATE_PACKET_LEN;
@@ -61,6 +61,31 @@ fn dedup_key(value: &serde_json::Value) -> serde_json::Value {
     clone
 }
 
+/// Extract the sketchybar event args from a decoded state payload.
+/// Only stable, display-relevant fields are forwarded — internal
+/// bitmasks stay in the JSON file for debugging.
+fn event_args_from(value: &serde_json::Value) -> Vec<EventArg> {
+    const KEYS: &[&str] = &[
+        "top_layer_name",
+        "default_layer_name",
+        "mods_letters",
+        "mods_state",
+    ];
+    let mut out = Vec::with_capacity(KEYS.len());
+    if let Some(obj) = value.as_object() {
+        for key in KEYS {
+            if let Some(v) = obj.get(*key) {
+                let s = match v {
+                    serde_json::Value::String(s) => s.clone(),
+                    other => other.to_string(),
+                };
+                out.push(EventArg::new(*key, s));
+            }
+        }
+    }
+    out
+}
+
 /// Run the main read → decode → write → notify loop.
 ///
 /// Firmware pushes 0xAB state packets on every layer/mod change plus a
@@ -102,7 +127,8 @@ pub fn run<T: HidTransport, W: StateWriter, N: Notifier>(
                     };
                     if changed {
                         writer.write(&value)?;
-                        notifier.notify(&opts.sketchybar_event)?;
+                        let args = event_args_from(&value);
+                        notifier.notify(&opts.sketchybar_event, &args)?;
                         last_key = Some(key);
                     }
                 }
@@ -409,5 +435,35 @@ mod tests {
         assert_eq!(values.len(), 2);
         assert_eq!(values[0]["mods_letters"], "S");
         assert_eq!(values[1]["mods_letters"], "C");
+    }
+
+    #[test]
+    fn forwards_sketchybar_event_args_from_payload() {
+        let mut transport = MockTransport::new(vec![Ok(state_packet())]);
+        let registry = Registry::builder().handler(StateHandler::new()).build();
+        let mut writer = RecordingWriter::default();
+        let notifier = RecordingNotifier::new();
+
+        let opts = RunOptions {
+            once: true,
+            sketchybar_event: "qmk_state_changed".into(),
+            backoff: Some(Duration::from_millis(0)),
+            max_backoff: Some(Duration::from_millis(0)),
+            max_reads: None,
+        };
+        run(&mut transport, &registry, &mut writer, &notifier, &opts).unwrap();
+
+        let calls = notifier.calls();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].event, "qmk_state_changed");
+        let args: std::collections::HashMap<_, _> = calls[0]
+            .args
+            .iter()
+            .map(|a| (a.key.as_str(), a.value.as_str()))
+            .collect();
+        assert_eq!(args.get("top_layer_name").copied(), Some("FN"));
+        assert_eq!(args.get("default_layer_name").copied(), Some("BASE"));
+        assert_eq!(args.get("mods_letters").copied(), Some("S"));
+        assert_eq!(args.get("mods_state").copied(), Some("held"));
     }
 }

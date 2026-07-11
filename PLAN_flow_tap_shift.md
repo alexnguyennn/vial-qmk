@@ -203,64 +203,41 @@ Location: `tools/qmk-state-daemon/` in vial-qmk repo (per user confirmation).
     - [ ] `justfile` with `build`, `test`, `lint` (clippy), `fmt`, `install`, `install-launchd`, `uninstall-launchd`.
     - [ ] `just install` → copies binary to `~/.local/bin/qmk-state-daemon`.
 
-15. **Sketchybar wiring**
-    - Live config: `~/.config/sketchybar/`.
-    - [ ] `~/.config/sketchybar/plugins/qmk_state.sh`:
-      ```bash
-      #!/usr/bin/env bash
-      source "$CONFIG_DIR/colors.sh"
-      STATE_FILE="${QMK_STATE_FILE:-/tmp/qmk_state.json}"
-      [ -f "$STATE_FILE" ] || exit 0
-      LAYER_NAME=$(jq -r '.top_layer_name // "?"' "$STATE_FILE")
-      MODS=$(jq -r '.mods_letters // ""' "$STATE_FILE")
-      MODS_STATE=$(jq -r '.mods_state // "none"' "$STATE_FILE")
+15. **Sketchybar wiring** (revised: lua, not bash)
+    - Live config: `~/.config/sketchybar/lua/`. Existing config uses
+      SbarLua (see `~/.config/sketchybar/lua/init.lua` and
+      `~/.config/sketchybar/lua/items/`).
+    - Sketchybar item registration goes in
+      `~/.config/sketchybar/lua/items/qmk-layer.lua` and
+      `~/.config/sketchybar/lua/items/qmk-mods.lua`, following the
+      same pattern as `items/keyboard-layer.lua` (which was a stub
+      for exactly this purpose — now obsolete, can be removed later).
+    - Registration in `items/init.lua` adds both to the
+      `right_section` bracket next to `battery`.
+    - Colors sourced from `~/.config/sketchybar/lua/colors.lua`
+      (returned as a Lua table). Palette already covers everything
+      needed (green, orange, magenta, blue, red, grey).
+    - **Event args, not JSON parsing**: daemon uses
+      `sketchybar --trigger qmk_state_changed top_layer_name=… mods_letters=… mods_state=… default_layer_name=…`
+      so Lua items read `event.top_layer_name` etc. directly. No jq /
+      JSON library needed. JSON file at `/tmp/qmk_state.json` is still
+      written for debug / manual inspection.
+    - **No click-script wired** — click doesn't need to query since
+      daemon keeps state fresh via push + 5s heartbeat. If ever
+      needed, add `click_script = "sketchybar --trigger qmk_state_changed …"`
+      but simpler to just wait for the next heartbeat.
+    - After user confirms end-to-end, persist the two new lua files
+      into chezmoi via the `chezmoi` skill (`chezmoi add
+      ~/.config/sketchybar/lua/items/qmk-*.lua`) and re-add the
+      modified `items/init.lua`. Do NOT persist before green-light.
 
-      # Layer color mapping
-      case "$LAYER_NAME" in
-        BASE|BASE-H) LC=$GREEN ;;
-        FN)          LC=$ORANGE ;;
-        FN-H)        LC=$MAGENTA ;;
-        NAS|NAS-H)   LC=$BLUE ;;
-        NUM)         LC=$RED ;;
-        MBO)         LC=$MAGENTA ;;
-        *)           LC=$GREY ;;
-      esac
-
-      # Mod color
-      case "$MODS_STATE" in
-        held)   MC=$RED ;;
-        weak)   MC=$ORANGE ;;
-        osm)    MC=$YELLOW ;;
-        locked) MC=$BLUE ;;
-        *)      MC=$TRANSPARENT ;;
-      esac
-
-      if [ -z "$MODS" ]; then MODS_LABEL=""; MODS_DRAW=off; else MODS_LABEL="$MODS"; MODS_DRAW=on; fi
-
-      sketchybar --set qmk_layer label="$LAYER_NAME" label.color=$LC background.color=$LC background.drawing=on \
-                 --set qmk_mods  label="$MODS_LABEL" label.color=$MC background.color=$MC background.drawing=$MODS_DRAW
-      ```
-    - [ ] `~/.config/sketchybar/plugins/qmk_click.sh`:
-      ```bash
-      #!/usr/bin/env bash
-      qmk-state-daemon query || true
-      ```
-    - [ ] Append to user's `~/.config/sketchybar/sketchybarrc`:
-      ```bash
-      sketchybar --add event qmk_state_changed
-      sketchybar --add item qmk_layer right \
-                 --set qmk_layer script="$CONFIG_DIR/plugins/qmk_state.sh" \
-                                 click_script="$CONFIG_DIR/plugins/qmk_click.sh" \
-                                 update_freq=0 \
-                 --subscribe qmk_layer qmk_state_changed
-      sketchybar --add item qmk_mods right \
-                 --set qmk_mods  script="$CONFIG_DIR/plugins/qmk_state.sh" \
-                                 click_script="$CONFIG_DIR/plugins/qmk_click.sh" \
-                                 update_freq=0 \
-                 --subscribe qmk_mods qmk_state_changed
-      ```
-    - [ ] Also ship these files inside daemon repo at `tools/qmk-state-daemon/sketchybar/` for portability.
-    - [ ] After user confirms end-to-end, persist `~/.config/sketchybar/plugins/qmk_state.sh`, `qmk_click.sh`, and `sketchybarrc` changes into chezmoi via the `chezmoi` skill. Do NOT persist before green-light.
+    Design rationale for lua over bash plugin:
+    - User's sketchybar config is fully lua-based via SbarLua.
+    - Bash plugin approach required jq + shell interpolation on
+      every state change; lua reads event args from sketchybar
+      natively.
+    - No new plugin script needed — daemon → sketchybar event → lua
+      handler is one hop.
 
 16. **launchd auto-start**
     - [ ] `tools/qmk-state-daemon/launchd/com.user.qmk-state-daemon.plist` template with `%HOME%` placeholder.
@@ -312,3 +289,6 @@ Location: `tools/qmk-state-daemon/` in vial-qmk repo (per user confirmation).
 
 - 2026-07-10: Workstream A committed on `feature/initial-customise` (`f732d29f42`) and pushed. Awaiting hardware validation.
 - 2026-07-10: Workstream B design finalized. Rust 1.93.1 via mise (no shell.nix work needed). Starting `feature/qmk-state-daemon`.
+- 2026-07-12: Workstream B firmware landed on `feature/initial-customise` (`72611a00b2`). Push-only design (dropped `0xAC` query due to non-weak `raw_hid_receive` in via.c). 5s heartbeat added.
+- 2026-07-12: Daemon dedup landed (`775e393132`); 6 dedup tests cover unit key extraction, single & multiple heartbeat dedup, resume-firing-after-change, and mods-only change detection.
+- 2026-07-12: Sketchybar wiring switched to lua (SbarLua) — daemon sends event args, lua items read `event.key` directly. New items `~/.config/sketchybar/lua/items/qmk-{layer,mods}.lua`, registered in `items/init.lua`. Bash plugin/item files removed from daemon repo.

@@ -4,17 +4,38 @@ use std::process::Command;
 
 use anyhow::Result;
 
+/// A single key=value pair passed as an event argument to
+/// `sketchybar --trigger EVENT k1=v1 k2=v2 …`. Lua items receive
+/// these as `event.k1` etc.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EventArg {
+    pub key: String,
+    pub value: String,
+}
+
+impl EventArg {
+    pub fn new(key: impl Into<String>, value: impl Into<String>) -> Self {
+        Self {
+            key: key.into(),
+            value: value.into(),
+        }
+    }
+}
+
 pub trait Notifier: Send {
-    fn notify(&self, event: &str) -> Result<()>;
+    fn notify(&self, event: &str, args: &[EventArg]) -> Result<()>;
 }
 
 pub struct SketchybarNotifier;
 
 impl Notifier for SketchybarNotifier {
-    fn notify(&self, event: &str) -> Result<()> {
-        let status = Command::new("sketchybar")
-            .args(["--trigger", event])
-            .status()?;
+    fn notify(&self, event: &str, args: &[EventArg]) -> Result<()> {
+        let mut cmd = Command::new("sketchybar");
+        cmd.arg("--trigger").arg(event);
+        for arg in args {
+            cmd.arg(format!("{}={}", arg.key, arg.value));
+        }
+        let status = cmd.status()?;
         if !status.success() {
             anyhow::bail!("sketchybar --trigger {event} exited {status}");
         }
@@ -25,7 +46,7 @@ impl Notifier for SketchybarNotifier {
 pub struct NullNotifier;
 
 impl Notifier for NullNotifier {
-    fn notify(&self, _event: &str) -> Result<()> {
+    fn notify(&self, _event: &str, _args: &[EventArg]) -> Result<()> {
         Ok(())
     }
 }
@@ -35,24 +56,54 @@ pub mod recording {
     use super::*;
     use std::sync::{Arc, Mutex};
 
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub struct RecordedNotify {
+        pub event: String,
+        pub args: Vec<EventArg>,
+    }
+
     #[derive(Clone, Default)]
     pub struct RecordingNotifier {
-        pub events: Arc<Mutex<Vec<String>>>,
+        pub calls: Arc<Mutex<Vec<RecordedNotify>>>,
     }
 
     impl RecordingNotifier {
         pub fn new() -> Self {
             Self::default()
         }
+        pub fn calls(&self) -> Vec<RecordedNotify> {
+            self.calls.lock().unwrap().clone()
+        }
+        /// Convenience for older tests that only care about event names.
         pub fn events(&self) -> Vec<String> {
-            self.events.lock().unwrap().clone()
+            self.calls
+                .lock()
+                .unwrap()
+                .iter()
+                .map(|c| c.event.clone())
+                .collect()
         }
     }
 
     impl Notifier for RecordingNotifier {
-        fn notify(&self, event: &str) -> Result<()> {
-            self.events.lock().unwrap().push(event.to_string());
+        fn notify(&self, event: &str, args: &[EventArg]) -> Result<()> {
+            self.calls.lock().unwrap().push(RecordedNotify {
+                event: event.to_string(),
+                args: args.to_vec(),
+            });
             Ok(())
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn event_arg_new() {
+        let a = EventArg::new("k", "v");
+        assert_eq!(a.key, "k");
+        assert_eq!(a.value, "v");
     }
 }

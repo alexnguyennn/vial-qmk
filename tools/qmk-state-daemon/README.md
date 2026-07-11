@@ -13,11 +13,17 @@ sketchybar.
 - `src/` — library + binary (see `PLAN_flow_tap_shift.md` for
   Workstream B architecture: `PacketHandler` + `Registry`, transport
   abstraction, atomic writer, notifier trait).
-- `sketchybar/plugins/qmk_state.sh` — reads JSON, updates items.
-- `sketchybar/items/qmk.sh` — bootstraps `qmk_layer` + `qmk_mods`.
 - `launchd/com.user.qmk-state-daemon.plist` — auto-start template.
-- `justfile` — build/install/launchd/sketchybar recipes.
+- `justfile` — build/install/launchd recipes.
 - `VALIDATION.md` — hardware validation walkthrough.
+
+Sketchybar items live in the user's sketchybar Lua config
+(`~/.config/sketchybar/lua/items/qmk-layer.lua` and `qmk-mods.lua`),
+persisted via chezmoi. They subscribe to the `qmk_state_changed`
+event and read `event.top_layer_name`, `event.mods_letters`,
+`event.mods_state`, `event.default_layer_name` — all populated
+directly by the daemon via `sketchybar --trigger EVENT k=v k=v`, so
+no jq / JSON parsing is needed on the Lua side.
 
 ## Quick start
 
@@ -28,15 +34,12 @@ just run-dry              # foreground, dry-run
 
 just install              # copies binary to ~/.local/bin
 just install-launchd      # auto-start via launchd
-just install-sketchybar   # copies plugin + item to ~/.config/sketchybar
-# then in ~/.config/sketchybar/sketchybarrc add:
-#     source "$CONFIG_DIR/items/qmk.sh"
+# Sketchybar lua items already ship in ~/.config/sketchybar/lua/items/
 sketchybar --reload
 ```
 
-Once verified, persist `~/.config/sketchybar/plugins/qmk_state.sh` and
-`items/qmk.sh` into chezmoi via the `chezmoi` skill (don't do this
-until end-to-end works).
+Once verified, persist the lua items and any dotfile changes via
+chezmoi (`chezmoi re-add`). Do not persist before end-to-end works.
 
 ## CLI
 
