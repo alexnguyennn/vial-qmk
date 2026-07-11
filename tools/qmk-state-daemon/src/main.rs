@@ -82,6 +82,7 @@ fn run_cmd(args: RunArgs, once: bool) -> Result<()> {
         once,
         backoff: Some(Duration::from_millis(100)),
         max_backoff: Some(Duration::from_secs(1)),
+        max_reads: None,
     };
 
     if args.dry_run {
