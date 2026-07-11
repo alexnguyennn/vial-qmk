@@ -28,6 +28,9 @@ pub struct RunOptions {
     /// Backoff between failed reads. `None` = default 100ms with 1s cap.
     pub backoff: Option<Duration>,
     pub max_backoff: Option<Duration>,
+    /// Test-only cap: stop after this many successful reads. `None` = run
+    /// forever (production behavior).
+    pub max_reads: Option<usize>,
 }
 
 impl Default for RunOptions {
@@ -37,15 +40,37 @@ impl Default for RunOptions {
             once: false,
             backoff: None,
             max_backoff: None,
+            max_reads: None,
         }
     }
+}
+
+/// Fields whose changes should NOT be treated as state changes for
+/// dedup purposes. The firmware's 5s heartbeat sets a different reason
+/// byte even when the observable state is identical, so we exclude
+/// `reason` and `reason_flags` before comparing successive payloads.
+const DEDUP_IGNORED_FIELDS: &[&str] = &["reason", "reason_flags"];
+
+fn dedup_key(value: &serde_json::Value) -> serde_json::Value {
+    let mut clone = value.clone();
+    if let Some(obj) = clone.as_object_mut() {
+        for field in DEDUP_IGNORED_FIELDS {
+            obj.remove(*field);
+        }
+    }
+    clone
 }
 
 /// Run the main read → decode → write → notify loop.
 ///
 /// Firmware pushes 0xAB state packets on every layer/mod change plus a
-/// periodic heartbeat, so the daemon is purely push-driven. Returns when
-/// `once` is true and a packet was successfully processed.
+/// periodic heartbeat, so the daemon is purely push-driven. The daemon
+/// dedupes payloads (ignoring the volatile `reason`/`reason_flags`
+/// fields) so heartbeats that carry the same observable state neither
+/// rewrite the JSON file nor fire the sketchybar trigger.
+///
+/// Returns when `once` is true and a packet was successfully processed,
+/// or when `max_reads` is reached (test-only cap).
 pub fn run<T: HidTransport, W: StateWriter, N: Notifier>(
     transport: &mut T,
     registry: &Registry,
@@ -58,6 +83,8 @@ pub fn run<T: HidTransport, W: StateWriter, N: Notifier>(
     let mut backoff = initial_backoff;
 
     let mut buf = [0u8; PACKET_LEN];
+    let mut last_key: Option<serde_json::Value> = None;
+    let mut reads_done: usize = 0;
     loop {
         match transport.read(&mut buf) {
             Ok(0) => {
@@ -68,11 +95,25 @@ pub fn run<T: HidTransport, W: StateWriter, N: Notifier>(
             Ok(n) => {
                 backoff = initial_backoff;
                 if let Some(value) = registry.handle(&buf[..n])? {
-                    writer.write(&value)?;
-                    notifier.notify(&opts.sketchybar_event)?;
+                    let key = dedup_key(&value);
+                    let changed = match &last_key {
+                        Some(prev) => prev != &key,
+                        None => true,
+                    };
+                    if changed {
+                        writer.write(&value)?;
+                        notifier.notify(&opts.sketchybar_event)?;
+                        last_key = Some(key);
+                    }
                 }
+                reads_done += 1;
                 if opts.once {
                     return Ok(());
+                }
+                if let Some(limit) = opts.max_reads {
+                    if reads_done >= limit {
+                        return Ok(());
+                    }
                 }
             }
             Err(_) => {
@@ -137,6 +178,7 @@ mod tests {
             sketchybar_event: "qmk_state_changed".into(),
             backoff: Some(Duration::from_millis(0)),
             max_backoff: Some(Duration::from_millis(0)),
+            max_reads: None,
         };
         run(
             &mut transport,
@@ -177,9 +219,85 @@ mod tests {
             sketchybar_event: "e".into(),
             backoff: Some(Duration::from_millis(0)),
             max_backoff: Some(Duration::from_millis(0)),
+            max_reads: None,
         };
         run(&mut transport, &registry, &mut writer, &notifier, &opts).unwrap();
 
         assert_eq!(notifier.events(), vec!["e"]);
+    }
+
+    fn heartbeat_packet_matching(seed: &[u8]) -> Vec<u8> {
+        // Same observable state as `seed`, but reason byte differs
+        // (INITIAL vs a change reason). Simulates the firmware's 5s
+        // heartbeat re-broadcasting an unchanged snapshot.
+        let mut buf = seed.to_vec();
+        buf[2] = REASON_INITIAL;
+        buf
+    }
+
+    fn changed_packet(seed: &[u8]) -> Vec<u8> {
+        let mut buf = seed.to_vec();
+        buf[3] = 4; // top_layer flips from FN to NAS
+        buf
+    }
+
+    #[test]
+    fn dedups_notifier_when_payload_unchanged() {
+        // Three reads: initial state, then a heartbeat with identical
+        // observable state, then a real change. Notifier should fire
+        // exactly twice: once for the initial packet, once for the
+        // real change.
+        let seed = state_packet();
+        let reads: Vec<Result<Vec<u8>>> = vec![
+            Ok(seed.clone()),
+            Ok(heartbeat_packet_matching(&seed)),
+            Ok(changed_packet(&seed)),
+        ];
+        let mut transport = MockTransport::new(reads);
+        let registry = Registry::builder().handler(StateHandler::new()).build();
+        let mut writer = RecordingWriter::default();
+        let notifier = RecordingNotifier::new();
+
+        let opts = RunOptions {
+            once: false,
+            sketchybar_event: "qmk_state_changed".into(),
+            backoff: Some(Duration::from_millis(0)),
+            max_backoff: Some(Duration::from_millis(0)),
+            max_reads: Some(3),
+        };
+        run(&mut transport, &registry, &mut writer, &notifier, &opts).unwrap();
+
+        assert_eq!(
+            notifier.events(),
+            vec!["qmk_state_changed", "qmk_state_changed"],
+            "heartbeat with identical observable state should not fire notifier"
+        );
+    }
+
+    #[test]
+    fn dedups_writer_when_payload_unchanged() {
+        // Same scenario as above; writer should also skip the redundant
+        // heartbeat to avoid pointless disk writes.
+        let seed = state_packet();
+        let reads: Vec<Result<Vec<u8>>> = vec![
+            Ok(seed.clone()),
+            Ok(heartbeat_packet_matching(&seed)),
+            Ok(changed_packet(&seed)),
+        ];
+        let mut transport = MockTransport::new(reads);
+        let registry = Registry::builder().handler(StateHandler::new()).build();
+        let mut writer = RecordingWriter::default();
+        let notifier = RecordingNotifier::new();
+
+        let opts = RunOptions {
+            once: false,
+            sketchybar_event: "qmk_state_changed".into(),
+            backoff: Some(Duration::from_millis(0)),
+            max_backoff: Some(Duration::from_millis(0)),
+            max_reads: Some(3),
+        };
+        run(&mut transport, &registry, &mut writer, &notifier, &opts).unwrap();
+
+        assert_eq!(writer.values.lock().unwrap().len(), 2);
     }
 }
