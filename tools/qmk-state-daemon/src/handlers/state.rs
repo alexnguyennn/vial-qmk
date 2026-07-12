@@ -12,7 +12,8 @@
 //! 10: weak_mods
 //! 11: oneshot_mods
 //! 12: locked_mods
-//! 13..32: reserved
+//! 13: caps_word_active (0|1)
+//! 14..32: reserved
 //! ```
 
 use anyhow::{ensure, Result};
@@ -31,6 +32,7 @@ pub const REASON_DEFAULT_LAYER: u8 = 0x02;
 pub const REASON_MODS: u8 = 0x04;
 pub const REASON_OSM: u8 = 0x08;
 pub const REASON_INITIAL: u8 = 0x10;
+pub const REASON_CAPS_WORD: u8 = 0x20;
 
 #[derive(Debug, Serialize, PartialEq)]
 pub struct StatePayload {
@@ -50,6 +52,8 @@ pub struct StatePayload {
     pub locked_mods: u8,
     pub mods_letters: String,
     pub mods_state: &'static str,
+    pub caps_word_active: bool,
+    pub caps_word_state: &'static str,
 }
 
 pub struct StateHandler;
@@ -83,6 +87,9 @@ fn reason_flags(reason: u8) -> Vec<&'static str> {
     if reason & REASON_INITIAL != 0 {
         out.push("initial");
     }
+    if reason & REASON_CAPS_WORD != 0 {
+        out.push("caps_word");
+    }
     out
 }
 
@@ -113,6 +120,7 @@ impl PacketHandler for StateHandler {
         let weak_mods = buf[10];
         let oneshot_mods = buf[11];
         let locked_mods = buf[12];
+        let caps_word_active = buf[13] != 0;
 
         let display_bits = real_mods | weak_mods | oneshot_mods | locked_mods;
         let mods_letters = mods_to_letters(display_bits);
@@ -134,6 +142,12 @@ impl PacketHandler for StateHandler {
             locked_mods,
             mods_letters,
             mods_state,
+            caps_word_active,
+            caps_word_state: if caps_word_active {
+                "active"
+            } else {
+                "inactive"
+            },
         };
         Ok(serde_json::to_value(payload)?)
     }
@@ -172,8 +186,22 @@ mod tests {
         assert_eq!(v["layer_state"], 0x11);
         assert_eq!(v["mods_letters"], "CS");
         assert_eq!(v["mods_state"], "held");
+        assert_eq!(v["caps_word_active"], false);
+        assert_eq!(v["caps_word_state"], "inactive");
         let flags: Vec<String> = serde_json::from_value(v["reason_flags"].clone()).unwrap();
         assert_eq!(flags, vec!["layer", "mods"]);
+    }
+
+    #[test]
+    fn decodes_caps_word_fields() {
+        let mut buf = fixture_packet();
+        buf[2] = REASON_CAPS_WORD;
+        buf[13] = 1;
+        let v = StateHandler::new().decode(&buf).unwrap();
+        assert_eq!(v["caps_word_active"], true);
+        assert_eq!(v["caps_word_state"], "active");
+        let flags: Vec<String> = serde_json::from_value(v["reason_flags"].clone()).unwrap();
+        assert_eq!(flags, vec!["caps_word"]);
     }
 
     #[test]

@@ -28,6 +28,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "raw_hid.h"
 #include "svalboard.h"
 #include "vial.h"
+#include "caps_word.h"
 // start from last custom qk keycode in keymap_support.h
 // keys we want to show in vial should be QK_KB_0 onwards
 #define RANGE_START SV_SAFE_RANGE
@@ -35,6 +36,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 // enum custom_keycodes { CUSTOM_CODE = RANGE_START };
 
 static bool qmk_state_broadcast_enabled = true;
+static bool qmk_state_caps_word_active = false;
 
 // Double hold functionality
 typedef struct {
@@ -248,6 +250,7 @@ const rgblight_segment_t* const __attribute((weak)) sval_rgb_layers[] = RGBLIGHT
 #define QMK_REASON_MODS 0x04
 #define QMK_REASON_OSM 0x08
 #define QMK_REASON_INITIAL 0x10
+#define QMK_REASON_CAPS_WORD 0x20
 
 static uint8_t  qmk_state_pending_reason = 0;
 static uint8_t  qmk_state_last_pkt[QMK_STATE_PACKET_LEN];
@@ -270,6 +273,7 @@ static void qmk_state_build(uint8_t reason, uint8_t out[QMK_STATE_PACKET_LEN]) {
     out[10]             = get_weak_mods();
     out[11]             = get_oneshot_mods();
     out[12]             = get_oneshot_locked_mods();
+    out[13]             = qmk_state_caps_word_active ? 1 : 0;
 }
 
 static void qmk_state_send(uint8_t reason) {
@@ -302,6 +306,11 @@ static void qmk_state_send(uint8_t reason) {
 
 static void qmk_state_mark(uint8_t reason) {
     qmk_state_pending_reason |= reason;
+}
+
+void caps_word_set_user(bool active) {
+    qmk_state_caps_word_active = active;
+    qmk_state_mark(QMK_REASON_CAPS_WORD);
 }
 // ---------------------------------------------------------------------------
 
@@ -349,6 +358,7 @@ void keyboard_post_init_user(void) {
     // debug_keyboard=true;
     // debug_mouse=true;
     rgblight_layers = sval_rgb_layers;
+    qmk_state_caps_word_active = is_caps_word_on();
     // Prime the state broadcast so the daemon gets a snapshot without
     // waiting for the first layer/mod change.
     qmk_state_mark(QMK_REASON_INITIAL);

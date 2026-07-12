@@ -131,6 +131,8 @@ mod tests {
         let args = vec![
             EventArg::new("top_layer_name", "BASE"),
             EventArg::new("mods_state", "held"),
+            EventArg::new("caps_word_state", "active"),
+            EventArg::new("caps_word_active", "true"),
         ];
         let env = sink.env_pairs("qmk_state_changed", &args, r#"{"top_layer_name":"BASE"}"#);
         assert!(env.contains(&("QMK_EVENT_NAME".into(), "qmk_state_changed".into())));
@@ -141,6 +143,8 @@ mod tests {
             r#"{"top_layer_name":"BASE"}"#.into()
         )));
         assert!(env.contains(&("QMK_MODS_STATE".into(), "held".into())));
+        assert!(env.contains(&("QMK_CAPS_WORD_STATE".into(), "active".into())));
+        assert!(env.contains(&("QMK_CAPS_WORD_ACTIVE".into(), "true".into())));
     }
 
     #[test]
@@ -150,7 +154,7 @@ mod tests {
                 vec![
                     "busctl".into(),
                     "SetText".into(),
-                    "{top_layer_name} {mods_letters}".into(),
+                    "{top_layer_name} {mods_letters} {caps_word_state}".into(),
                     "{QMK_TOP_LAYER_NAME}".into(),
                 ],
                 vec!["busctl".into(), "SetIcon".into(), "keyboard".into()],
@@ -161,10 +165,11 @@ mod tests {
         let args = vec![
             EventArg::new("top_layer_name", "BASE"),
             EventArg::new("mods_letters", "CS"),
+            EventArg::new("caps_word_state", "active"),
         ];
         let commands = sink.expanded_commands("qmk_state_changed", &args, "{}");
         assert_eq!(commands.len(), 2);
-        assert_eq!(commands[0][2], "BASE CS");
+        assert_eq!(commands[0][2], "BASE CS active");
         assert_eq!(commands[0][3], "BASE");
         assert_eq!(commands[1][2], "keyboard");
     }

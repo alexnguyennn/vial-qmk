@@ -74,6 +74,8 @@ fn event_args_from(value: &serde_json::Value) -> Vec<EventArg> {
         "default_layer_name",
         "mods_letters",
         "mods_state",
+        "caps_word_active",
+        "caps_word_state",
     ];
     let mut out = Vec::with_capacity(KEYS.len());
     if let Some(obj) = value.as_object() {
