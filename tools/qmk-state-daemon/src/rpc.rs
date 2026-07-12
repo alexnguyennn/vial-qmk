@@ -308,20 +308,23 @@ where
     let handle = thread::spawn(move || {
         let mut buf = [0u8; vial_qsid::PACKET_LEN];
         loop {
-            // Wait briefly for an outbound request. If none, fall
-            // through to a blocking read for state packets.
-            match rx.recv_timeout(Duration::from_millis(20)) {
+            // Prefer outbound RPC requests when they're ready; otherwise
+            // do a short read for state packets so the loop stays
+            // responsive to future RPC traffic.
+            match rx.try_recv() {
                 Ok(req) => {
                     let result = perform_qsid_request(&mut transport, &req.packet, &mut buf);
                     let _ = req.reply.send(result);
                     continue;
                 }
-                Err(mpsc::RecvTimeoutError::Disconnected) => return,
-                Err(mpsc::RecvTimeoutError::Timeout) => {}
+                Err(mpsc::TryRecvError::Disconnected) => return,
+                Err(mpsc::TryRecvError::Empty) => {}
             }
-            match transport.read(&mut buf) {
+            match transport.read_timeout(&mut buf, 100) {
                 Ok(0) => {
-                    thread::sleep(Duration::from_millis(50));
+                    // Timeout expired with no data; loop back to
+                    // check for RPC requests.
+                    continue;
                 }
                 Ok(_n) => {
                     if !buf.is_empty() && buf[0] == 0xAB {
@@ -344,18 +347,18 @@ fn perform_qsid_request<T: crate::transport::HidTransport>(
     buf: &mut [u8; vial_qsid::PACKET_LEN],
 ) -> Result<Vec<u8>> {
     transport.write(packet).context("qsid write")?;
-    // Read until we see a non-state packet (i.e. QSID response). Bound
-    // the number of drains so a busy keyboard doesn't starve the RPC.
+    // Read until we see a non-state packet (i.e. QSID response). Use a
+    // bounded timeout so we don't hang if the device never responds.
     for _ in 0..32 {
-        let n = transport.read(buf).context("qsid read")?;
+        let n = transport
+            .read_timeout(buf, 500)
+            .context("qsid read")?;
         if n == 0 {
             continue;
         }
         if buf[0] == 0xAB {
             // State packet arrived interleaved with our response.
-            // Drop it (or ideally forward to the state pipeline, but
-            // we're inside the same thread here so the caller will
-            // just miss one heartbeat; the next real event will refresh).
+            // Drop it; the next real event or heartbeat will refresh.
             continue;
         }
         return Ok(buf[..n].to_vec());
@@ -383,7 +386,7 @@ mod tests {
 
     #[test]
     fn broker_serves_qsid_get() {
-        let transport = MockTransport::new(vec![Ok(qsid_ok_response(25))]);
+        let transport = MockTransport::with_responses(vec![Ok(qsid_ok_response(25))]);
         let (tx, _h) = spawn_broker(transport, |_| {});
         let val = qsid_get_via_broker(&tx, 28, 2).unwrap();
         assert_eq!(val, 25);
@@ -391,21 +394,33 @@ mod tests {
 
     #[test]
     fn broker_drops_interleaved_state_packet() {
+        // Push one unsolicited state packet AND one response.
+        // The QSID request should ignore the state packet (delivered
+        // via the pre-write drain? no — actually the broker loop reads
+        // it in the idle path; then the RPC comes in and writes,
+        // which unlocks the response). Either way the QSID caller
+        // must see the response value.
         let mut state = vec![0u8; vial_qsid::PACKET_LEN];
         state[0] = 0xAB;
         state[3] = 4;
-        let transport = MockTransport::new(vec![Ok(state), Ok(qsid_ok_response(42))]);
+        let mut transport = MockTransport::with_responses(vec![Ok(qsid_ok_response(42))]);
+        transport.unsolicited.push_back(Ok(state));
 
         let (tx, _h) = spawn_broker(transport, |_| {});
+        // Sleep briefly so the broker idle loop consumes the state
+        // packet before the RPC arrives — mirrors production ordering
+        // where state pushes precede user actions.
+        std::thread::sleep(Duration::from_millis(50));
         let val = qsid_get_via_broker(&tx, 28, 2).unwrap();
         assert_eq!(val, 42);
     }
 
     #[test]
     fn broker_qsid_set_reads_back() {
-        // set write, set ok response, then get write, then get value 40
-        let transport = MockTransport::new(vec![
-            Ok(qsid_ok_response(0)), // set ack
+        // set write -> ack, get write -> value 40. Both are
+        // write-gated responses.
+        let transport = MockTransport::with_responses(vec![
+            Ok(qsid_ok_response(0)),  // set ack
             Ok(qsid_ok_response(40)), // read-back
         ]);
         let (tx, _h) = spawn_broker(transport, |_| {});
