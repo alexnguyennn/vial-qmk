@@ -189,8 +189,37 @@ just install-udev-rule 303a 4044
 just detect
 ```
 
-For i3status-rust, verify the custom block uses `watch_files` and
-`interval = "once"` with the same concrete path that the helper writes:
+For i3status-rust `custom_dbus`, verify the bar exposes the expected
+D-Bus object:
+
+```bash
+busctl --user introspect rs.i3status /qmk_state rs.i3status.custom
+```
+
+Expected methods include `SetText`, `SetIcon`, and `SetState`. If the
+object is missing, reload/restart the Sway bar so i3status-rust loads its
+`custom_dbus` block. If you set `I3RS_DBUS_NAME`, update the daemon
+`busctl` command service from `rs.i3status` to `rs.i3status.<name>`.
+
+Verify the daemon config uses inline `busctl` commands:
+
+```toml
+[sink]
+kind = "command"
+commands = [
+  ["busctl", "--user", "call", "rs.i3status", "/qmk_state", "rs.i3status.custom", "SetText", "ss", "{top_layer_name} {mods_letters}", "{top_layer_name}"],
+]
+```
+
+Then reload it:
+
+```bash
+qmk-state-daemon reload-config
+```
+
+For the file-watch fallback, verify the custom block uses `watch_files`
+and `interval = "once"` with the same concrete path that the helper
+writes:
 
 ```toml
 [[block]]

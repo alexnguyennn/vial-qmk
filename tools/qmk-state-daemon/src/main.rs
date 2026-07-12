@@ -314,7 +314,8 @@ fn sink_config_from_args(args: &RunArgs, fallback: SinkConfig) -> Result<SinkCon
             } else {
                 Ok(SinkConfig::Command {
                     event: Some(args.event_name.clone()),
-                    program: args.command.clone(),
+                    program: Some(args.command.clone()),
+                    commands: None,
                 })
             }
         }
@@ -323,7 +324,8 @@ fn sink_config_from_args(args: &RunArgs, fallback: SinkConfig) -> Result<SinkCon
         }),
         Some("command") => Ok(SinkConfig::Command {
             event: Some(args.event_name.clone()),
-            program: args.command.clone(),
+            program: Some(args.command.clone()),
+            commands: None,
         }),
         Some("sketchybar") => Ok(SinkConfig::Sketchybar {
             event: Some(args.event_name.clone()),
@@ -350,12 +352,31 @@ fn make_sink(
     }
     match cfg {
         SinkConfig::Null { .. } => Ok(Box::new(NullSink)),
-        SinkConfig::Command { program, .. } => Ok(Box::new(CommandSink::new(
-            program.clone(),
+        SinkConfig::Command {
+            program, commands, ..
+        } => Ok(Box::new(CommandSink::new(
+            command_programs(program, commands)?,
             state_file.to_path_buf(),
         )?)),
         SinkConfig::Sketchybar { .. } => make_sketchybar_sink(),
     }
+}
+
+fn command_programs(
+    program: &Option<Vec<String>>,
+    commands: &Option<Vec<Vec<String>>>,
+) -> Result<Vec<Vec<String>>> {
+    let mut out = Vec::new();
+    if let Some(program) = program {
+        out.push(program.clone());
+    }
+    if let Some(commands) = commands {
+        out.extend(commands.clone());
+    }
+    if out.is_empty() {
+        anyhow::bail!("command sink requires program or commands");
+    }
+    Ok(out)
 }
 
 #[cfg(target_os = "macos")]

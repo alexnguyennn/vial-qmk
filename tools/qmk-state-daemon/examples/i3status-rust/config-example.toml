@@ -1,13 +1,8 @@
-# Add this to your i3status-rust config. The daemon's command sink runs
-# examples/i3status-rust/qmk-state-to-file.sh on every keyboard state
-# change, and i3status-rust refreshes this block via file-watch events.
-#
-# Use a concrete path for command/watch_files. For a user with UID 1000,
-# ${XDG_RUNTIME_DIR:-/tmp} is usually /run/user/1000 under systemd.
+# Add this to your i3status-rust config. The daemon command sink calls
+# busctl on every deduped keyboard state change, and i3status-rust
+# refreshes this block immediately through its custom_dbus API.
 
 [[block]]
-block = "custom"
-command = "cat /run/user/1000/qmk-state-daemon.i3status 2>/dev/null || printf '?'"
-watch_files = ["/run/user/1000/qmk-state-daemon.i3status"]
-interval = "once"
+block = "custom_dbus"
+path = "/qmk_state"
 format = " $text "

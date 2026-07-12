@@ -1,0 +1,18 @@
+# Example qmk-state-daemon config for i3status-rust custom_dbus.
+#
+# This intentionally uses CommandSink with inline busctl commands rather
+# than a shell script. Command arguments can reference event fields with
+# templates such as {top_layer_name}, {mods_letters}, and
+# {state_payload_json}. The same QMK_* environment is exposed to every
+# command.
+
+vid = "0x303A"
+pid = "0x4044"
+
+[sink]
+kind = "command"
+event = "qmk_state_changed"
+commands = [
+  ["busctl", "--user", "call", "rs.i3status", "/qmk_state", "rs.i3status.custom", "SetIcon", "s", "keyboard"],
+  ["busctl", "--user", "call", "rs.i3status", "/qmk_state", "rs.i3status.custom", "SetText", "ss", "{top_layer_name} {mods_letters}", "{top_layer_name}"],
+]

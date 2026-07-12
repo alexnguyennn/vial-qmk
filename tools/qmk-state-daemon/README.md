@@ -54,9 +54,9 @@ just systemd-status
 ```
 
 The Linux default config uses the generic command sink and writes a
-sample event log. Replace the command with your bar/update script, or use
-`examples/i3status-rust/qmk-state-to-file.sh` with the i3status-rust
-snippet in `examples/i3status-rust/config-example.toml`.
+sample event log. For i3status-rust, prefer the `custom_dbus` example in
+`examples/i3status-rust/config-example.toml` plus daemon config in
+`examples/i3status-rust/qmk-state-daemon-dbus.toml`.
 
 Once verified, persist the lua items and any dotfile changes via
 chezmoi (`chezmoi re-add`). Do not persist before end-to-end works.
@@ -153,6 +153,37 @@ Sinks receive deduped state changes after the JSON file is written.
 - `command` runs an arbitrary command with state in environment variables.
 - `null` writes JSON only and emits no external event.
 
+`command` supports either one command or several commands:
+
+```toml
+[sink]
+kind = "command"
+program = ["/path/to/program", "arg"]
+
+# Or:
+commands = [
+  ["program-one", "arg"],
+  ["program-two", "arg"],
+]
+```
+
+All commands receive the same event environment and run in order. If one
+command exits non-zero, the sink reports the failure and stops the
+sequence for that event.
+
+Command args can reference event fields without using a shell:
+
+```toml
+commands = [
+  ["printf", "layer={top_layer_name} mods={mods_letters}\n"],
+]
+```
+
+Supported templates include `{top_layer_name}`, `{default_layer_name}`,
+`{mods_letters}`, `{mods_state}`, `{event_name}`, `{state_json}`,
+`{state_payload_json}`, and their uppercase environment names such as
+`{QMK_TOP_LAYER_NAME}`.
+
 Command sink environment:
 
 - `QMK_EVENT_NAME` — configured event name.
@@ -216,21 +247,27 @@ systemctl --user restart qmk-state-daemon.service
 
 ## i3status-rust Setup
 
-The recommended i3status-rust integration is event-like without polling:
-the daemon command sink updates a tiny status file on each keyboard state
-change, and i3status-rust refreshes the custom block via `watch_files`.
+The recommended i3status-rust integration is `custom_dbus`: i3status-rust
+owns a D-Bus object, and the daemon's command sink calls `busctl` on each
+deduped keyboard state change. This is event-driven and analogous to the
+macOS `sketchybar --trigger` flow, without a polling interval or helper
+shell script.
 
-1. Find the runtime path i3status-rust should watch:
+1. Add the D-Bus block to i3status-rust config:
 
-```bash
-printf '%s\n' "${XDG_RUNTIME_DIR:-/tmp}/qmk-state-daemon.i3status"
+```toml
+[[block]]
+block = "custom_dbus"
+path = "/qmk_state"
+format = " $text "
 ```
 
-Under systemd this is usually `/run/user/$UID/qmk-state-daemon.i3status`.
-Use the concrete path in i3status-rust config because TOML examples may
-not expand shell variables inside `watch_files`.
+This creates a user D-Bus object at service `rs.i3status`, path
+`/qmk_state`, interface `rs.i3status.custom`. If you run multiple
+i3status-rust bars, set `I3RS_DBUS_NAME` for each bar and update the
+daemon command service name accordingly, for example `rs.i3status.top`.
 
-2. Configure the daemon command sink:
+2. Configure the daemon command sink with inline `busctl` commands:
 
 ```toml
 vid = "0x303A"
@@ -239,10 +276,16 @@ pid = "0x4044"
 [sink]
 kind = "command"
 event = "qmk_state_changed"
-program = ["/home/alex/bench/cfg/vial-qmk/tools/qmk-state-daemon/examples/i3status-rust/qmk-state-to-file.sh"]
+commands = [
+  ["busctl", "--user", "call", "rs.i3status", "/qmk_state", "rs.i3status.custom", "SetIcon", "s", "keyboard"],
+  ["busctl", "--user", "call", "rs.i3status", "/qmk_state", "rs.i3status.custom", "SetText", "ss", "{top_layer_name} {mods_letters}", "{top_layer_name}"],
+]
 ```
 
-Adjust the path if the checkout lives somewhere else.
+The template args are expanded by `CommandSink`, so no shell is required.
+`SetText` receives full text and short text. The example shows multiple
+commands sharing the same event environment; remove the `SetIcon` command
+if repeatedly setting a static icon is unnecessary.
 
 3. Reload daemon config:
 
@@ -250,8 +293,41 @@ Adjust the path if the checkout lives somewhere else.
 qmk-state-daemon reload-config
 ```
 
-4. Add a custom block to the i3status-rust config. Replace `1000` with
-the output of `id -u` if needed:
+4. Reload/restart the Sway bar so i3status-rust creates the D-Bus object.
+
+5. Verify updates:
+
+```bash
+busctl --user introspect rs.i3status /qmk_state rs.i3status.custom
+qmk-state-daemon ping
+```
+
+Hold a layer key or modifier. The daemon should call `busctl SetText` on
+the i3status-rust object immediately after each deduped state change.
+
+### i3status-rust watch_files Fallback
+
+If you do not want to use D-Bus, keep the file-based custom block. The
+daemon command sink runs `examples/i3status-rust/qmk-state-to-file.sh` on
+each state change, and i3status-rust refreshes via `watch_files`.
+
+1. Find the runtime path i3status-rust should watch:
+
+```bash
+printf '%s\n' "${XDG_RUNTIME_DIR:-/tmp}/qmk-state-daemon.i3status"
+```
+
+2. Configure the daemon command sink:
+
+```toml
+[sink]
+kind = "command"
+event = "qmk_state_changed"
+program = ["/home/alex/bench/cfg/vial-qmk/tools/qmk-state-daemon/examples/i3status-rust/qmk-state-to-file.sh"]
+```
+
+3. Add a custom block to i3status-rust. Replace `1000` with the output of
+`id -u` if needed:
 
 ```toml
 [[block]]
@@ -262,21 +338,25 @@ interval = "once"
 format = " $text "
 ```
 
-5. Reload/restart the Sway bar so i3status-rust picks up its config.
-
-6. Verify updates:
+4. Verify the file updates:
 
 ```bash
 cat /run/user/$(id -u)/qmk-state-daemon.i3status
 qmk-state-daemon ping
 ```
 
-Hold a layer key or modifier. The daemon should update the watched file
-immediately, and i3status-rust should refresh the block from the file
-watch event rather than waiting for a one-second polling interval.
-
 The helper writes the watched file in place instead of replacing it with
 `mv`, so `watch_files` observes modifications on the configured path.
+
+### Future Native DbusSink
+
+A native `DbusSink` would be an optimization, not a requirement. It would
+not create the i3status-rust object; i3status-rust still creates that from
+its `custom_dbus` block config. The daemon sink would act as a D-Bus
+client and call `SetText` directly from Rust, cutting out the per-event
+`busctl` process. Keep the current `CommandSink` approach unless process
+spawn overhead becomes measurable or the D-Bus formatting/config needs to
+be fully daemon-native.
 
 ## Architecture: one HID owner, socket-based RPC
 

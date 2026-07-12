@@ -26,7 +26,8 @@ pub enum SinkConfig {
     },
     Command {
         event: Option<String>,
-        program: Vec<String>,
+        program: Option<Vec<String>>,
+        commands: Option<Vec<Vec<String>>>,
     },
     Null {
         event: Option<String>,
@@ -199,9 +200,39 @@ program = ["/bin/true"]
         assert_eq!(resolved.state_file, PathBuf::from("/tmp/state.json"));
         assert_eq!(resolved.socket, PathBuf::from("/tmp/sock"));
         match resolved.sink {
-            SinkConfig::Command { event, program } => {
+            SinkConfig::Command {
+                event,
+                program,
+                commands,
+            } => {
                 assert_eq!(event.as_deref(), Some("e"));
-                assert_eq!(program, vec!["/bin/true"]);
+                assert_eq!(program.as_deref(), Some(&["/bin/true".to_string()][..]));
+                assert!(commands.is_none());
+            }
+            _ => panic!("wrong sink"),
+        }
+    }
+
+    #[test]
+    fn parses_multiple_command_config() {
+        let cfg: Config = toml::from_str(
+            r#"
+[sink]
+kind = "command"
+commands = [
+  ["/bin/true"],
+  ["/usr/bin/printf", "{top_layer_name}"],
+]
+"#,
+        )
+        .unwrap();
+        let resolved = cfg.resolve().unwrap();
+        match resolved.sink {
+            SinkConfig::Command {
+                program, commands, ..
+            } => {
+                assert!(program.is_none());
+                assert_eq!(commands.unwrap().len(), 2);
             }
             _ => panic!("wrong sink"),
         }
