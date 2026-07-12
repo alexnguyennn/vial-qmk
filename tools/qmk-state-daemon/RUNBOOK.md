@@ -33,6 +33,46 @@ Healthy signals:
 
 ## Known Failure Modes
 
+### 0. I want to use Vial GUI or the direct Python tool temporarily
+
+The daemon is the sole raw-HID owner. Vial GUI and
+`keyboards/svalboard/keymaps/alex/tools/vial-qs.py` use the same HID
+interface, so they **will** fight the daemon.
+
+There is currently no in-process daemon suspend flag; use launchd.
+
+Pause / resume flow:
+
+```bash
+cd ~/bench/cfg/vial-qmk/tools/qmk-state-daemon
+just pause-launchd
+
+# now use Vial GUI, or:
+cd ~/bench/cfg/vial-qmk/keyboards/svalboard/keymaps/alex/tools
+just py-list
+just py-get 28
+just py-set 28 40
+
+cd ~/bench/cfg/vial-qmk/tools/qmk-state-daemon
+just resume-launchd
+sketchybar --reload
+```
+
+If you prefer to stay in the keymap tools directory:
+
+```bash
+cd ~/bench/cfg/vial-qmk/keyboards/svalboard/keymaps/alex/tools
+just daemon-pause
+# use Vial GUI or py-* recipes
+just daemon-resume
+```
+
+Notes:
+
+- Use daemon RPC (`qmk-state-daemon qsid ...`) for normal QSID work.
+- Use Vial GUI only for Vial-visible settings / keymap changes.
+- Vial GUI still cannot see custom QSIDs 28/29.
+
 ### 1. Daemon crashed at startup on VID/PID parsing
 
 Old builds parsed clap's decimal defaults as hex and crashed with:

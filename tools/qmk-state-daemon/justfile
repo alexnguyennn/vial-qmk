@@ -62,6 +62,27 @@ launchd-status:
 launchd-logs:
     tail -F "$HOME/Library/Logs/qmk-state-daemon.out.log" "$HOME/Library/Logs/qmk-state-daemon.err.log"
 
+# Temporarily release the raw-HID interface so Vial GUI or the direct
+# Python fallback can open it.
+pause-launchd:
+    -launchctl bootout gui/$UID "{{ PLIST_DST }}"
+    @echo "qmk-state-daemon stopped; raw-HID is now free for Vial / direct tools"
+
+# Resume the daemon after using Vial/direct HID and restart the launchd
+# job cleanly.
+resume-launchd: install
+    mkdir -p "$HOME/Library/LaunchAgents" "$HOME/Library/Logs"
+    sed "s|%HOME%|$HOME|g" "{{ PLIST_SRC }}" > "{{ PLIST_DST }}"
+    launchctl bootstrap gui/$UID "{{ PLIST_DST }}" 2>/dev/null || \
+      (launchctl bootout gui/$UID "{{ PLIST_DST }}" && \
+       launchctl bootstrap gui/$UID "{{ PLIST_DST }}")
+    launchctl enable gui/$UID/{{ LAUNCHD_LABEL }}
+    launchctl kickstart -k gui/$UID/{{ LAUNCHD_LABEL }}
+    @echo "qmk-state-daemon resumed"
+    @echo "tip: run 'sketchybar --reload' if the qmk items were stale"
+
+restart-launchd: pause-launchd resume-launchd
+
 # --- convenience ---
 
 detect:

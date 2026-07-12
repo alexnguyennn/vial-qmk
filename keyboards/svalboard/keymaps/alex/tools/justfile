@@ -11,6 +11,7 @@
 set shell := ["bash", "-euo", "pipefail", "-c"]
 
 DAEMON := "qmk-state-daemon"
+PLIST := "$HOME/Library/LaunchAgents/com.user.qmk-state-daemon.plist"
 
 default:
     @just --list
@@ -46,6 +47,25 @@ flow-clamp-set value:
 flow-status:
     @printf 'delta (qsid 28): ' && just get 28
     @printf 'clamp (qsid 29): ' && just get 29
+
+# --- daemon handoff helpers ---
+
+# Release the raw-HID interface so Vial GUI or the direct Python tool
+# can open it.
+daemon-pause:
+    -launchctl bootout gui/$UID {{ PLIST }}
+    @echo "daemon paused; you can now use Vial GUI or the py-* recipes"
+
+# Resume the daemon and reclaim raw-HID.
+daemon-resume:
+    launchctl bootstrap gui/$UID {{ PLIST }} 2>/dev/null || \
+      (launchctl bootout gui/$UID {{ PLIST }} && \
+       launchctl bootstrap gui/$UID {{ PLIST }})
+    launchctl kickstart -k gui/$UID/com.user.qmk-state-daemon
+    @echo "daemon resumed"
+    @echo "tip: run 'sketchybar --reload' if the qmk items look stale"
+
+daemon-restart: daemon-pause daemon-resume
 
 # --- fallback: direct HID via Python (requires daemon stopped) ---
 

@@ -42,6 +42,49 @@ sketchybar --reload
 Once verified, persist the lua items and any dotfile changes via
 chezmoi (`chezmoi re-add`). Do not persist before end-to-end works.
 
+## Temporarily Using Vial Or Direct HID Tools
+
+The daemon and Vial/direct-HID tools all want the same raw-HID
+interface. They do fight each other: whichever process owns the raw-HID
+handle first wins, and the others will fail to open it or behave
+erratically.
+
+Important consequences:
+
+- `qmk-state-daemon` does **not** currently have an in-process
+  "suspend" mode.
+- Pausing/resuming happens at the **launchd layer**.
+- The Python fallback `vial-qs.py` only works while the daemon is
+  stopped.
+- Vial GUI should also be used while the daemon is stopped.
+
+Recommended handoff:
+
+```bash
+cd ~/bench/cfg/vial-qmk/tools/qmk-state-daemon
+just pause-launchd
+
+# now use Vial GUI, or from
+# ~/bench/cfg/vial-qmk/keyboards/svalboard/keymaps/alex/tools
+# run: just py-list / just py-get 28 / just py-set 28 40
+
+just resume-launchd
+sketchybar --reload
+```
+
+Equivalent shortcuts from the keymap tools directory:
+
+```bash
+cd ~/bench/cfg/vial-qmk/keyboards/svalboard/keymaps/alex/tools
+just daemon-pause
+# use Vial or py-* recipes
+just daemon-resume
+```
+
+Note: Vial GUI cannot render custom QSIDs 28/29, so use the daemon RPC
+(`qmk-state-daemon qsid ...`) or the Python fallback for flow-tap delta
+and clamp.
+
 ## CLI
 
 Daemon:
@@ -125,3 +168,6 @@ Dispatch code doesn't change.
   `just launchd-logs`.
 - stale sketchybar or broken `qsid` commands → follow `RUNBOOK.md`
   (especially the `just install` + `launchctl kickstart -k ...` recovery flow).
+- need to temporarily use Vial GUI or the Python fallback → use
+  `just pause-launchd` / `just resume-launchd` (or `daemon-pause` /
+  `daemon-resume` from the keymap tools dir).
