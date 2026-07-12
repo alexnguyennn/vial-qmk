@@ -34,6 +34,8 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 // enum custom_keycodes { CUSTOM_CODE = RANGE_START };
 
+static bool qmk_state_broadcast_enabled = true;
+
 // Double hold functionality
 typedef struct {
     uint16_t last_hold_time;
@@ -191,6 +193,12 @@ bool process_record_user(uint16_t keycode, keyrecord_t* record) {
             }
             break;
 
+        case SV_QMK_STATE_TOGGLE:
+            if (record->event.pressed) {
+                qmk_state_broadcast_enabled = !qmk_state_broadcast_enabled;
+            }
+            return false;
+
         default:
             return true;
     }
@@ -265,6 +273,8 @@ static void qmk_state_build(uint8_t reason, uint8_t out[QMK_STATE_PACKET_LEN]) {
 }
 
 static void qmk_state_send(uint8_t reason) {
+    if (!qmk_state_broadcast_enabled) return;
+
     uint8_t pkt[QMK_STATE_PACKET_LEN];
     qmk_state_build(reason, pkt);
 
@@ -393,7 +403,7 @@ const uint16_t PROGMEM keymaps[DYNAMIC_KEYMAP_LAYER_COUNT][MATRIX_ROWS][MATRIX_C
     [FUNC] = LAYOUT(
         /*Center           North           East            South           West*/
         /*R1*/ KC_HOME,         KC_UP,          KC_RIGHT,       KC_DOWN,        KC_LEFT, XXXXXXX,
-        /*R2*/ XXXXXXX,         KC_F8,          XXXXXXX,        KC_F7,          KC_END, XXXXXXX,
+        /*R2*/ XXXXXXX,         KC_F8,    SV_QMK_STATE_TOGGLE,  KC_F7,          KC_END, XXXXXXX,
         /*R3*/ KC_PSCR,         KC_F10,         KC_LGUI,        KC_F9,          KC_INS, XXXXXXX,
         /*R4*/ KC_PAUSE,        KC_PGUP,        KC_F12,         KC_PGDN,        KC_F11, XXXXXXX,
 

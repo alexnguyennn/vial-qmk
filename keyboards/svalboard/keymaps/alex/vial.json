@@ -105,6 +105,11 @@
 	 "shortName": "Turbo\nScan",
 	 "title": "Change the scan mode of the keyboard.",
 	 "name": "SV_TURBO_SCAN"
+      },
+      {
+        "shortName": "QMK\nState\nToggle",
+        "title": "Toggle qmk-state-daemon raw-HID state broadcasts.",
+        "name": "SV_QMK_STATE_TOGGLE"
       }
     ],
     "layouts": {
