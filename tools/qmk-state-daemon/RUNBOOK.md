@@ -201,7 +201,22 @@ object is missing, reload/restart the Sway bar so i3status-rust loads its
 `custom_dbus` block. If you set `I3RS_DBUS_NAME`, update the daemon
 `busctl` command service from `rs.i3status` to `rs.i3status.<name>`.
 
-Verify the daemon config uses inline `busctl` commands:
+Verify the daemon config uses the native `dbus` sink:
+
+```toml
+[sink]
+kind = "dbus"
+service = "rs.i3status"
+path = "/qmk_state"
+interface = "rs.i3status.custom"
+text = "{top_layer_name} {mods_letters}"
+short_text = "{top_layer_name}"
+icon = "keyboard"
+```
+
+The daemon does not create `/qmk_state`; i3status-rust creates it after
+loading its `custom_dbus` block. If native D-Bus calls fail, use the
+CommandSink `busctl` fallback:
 
 ```toml
 [sink]

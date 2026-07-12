@@ -29,6 +29,15 @@ pub enum SinkConfig {
         program: Option<Vec<String>>,
         commands: Option<Vec<Vec<String>>>,
     },
+    Dbus {
+        event: Option<String>,
+        service: Option<String>,
+        path: Option<String>,
+        interface: Option<String>,
+        text: Option<String>,
+        short_text: Option<String>,
+        icon: Option<String>,
+    },
     Null {
         event: Option<String>,
     },
@@ -233,6 +242,45 @@ commands = [
             } => {
                 assert!(program.is_none());
                 assert_eq!(commands.unwrap().len(), 2);
+            }
+            _ => panic!("wrong sink"),
+        }
+    }
+
+    #[test]
+    fn parses_dbus_config() {
+        let cfg: Config = toml::from_str(
+            r#"
+[sink]
+kind = "dbus"
+event = "qmk_state_changed"
+service = "rs.i3status.top"
+path = "/qmk_state"
+interface = "rs.i3status.custom"
+text = "{top_layer_name} {mods_letters}"
+short_text = "{top_layer_name}"
+icon = "keyboard"
+"#,
+        )
+        .unwrap();
+        let resolved = cfg.resolve().unwrap();
+        match resolved.sink {
+            SinkConfig::Dbus {
+                event,
+                service,
+                path,
+                interface,
+                text,
+                short_text,
+                icon,
+            } => {
+                assert_eq!(event.as_deref(), Some("qmk_state_changed"));
+                assert_eq!(service.as_deref(), Some("rs.i3status.top"));
+                assert_eq!(path.as_deref(), Some("/qmk_state"));
+                assert_eq!(interface.as_deref(), Some("rs.i3status.custom"));
+                assert_eq!(text.as_deref(), Some("{top_layer_name} {mods_letters}"));
+                assert_eq!(short_text.as_deref(), Some("{top_layer_name}"));
+                assert_eq!(icon.as_deref(), Some("keyboard"));
             }
             _ => panic!("wrong sink"),
         }

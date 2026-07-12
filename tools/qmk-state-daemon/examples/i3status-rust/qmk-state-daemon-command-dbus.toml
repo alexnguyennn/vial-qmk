@@ -1,0 +1,15 @@
+# Fallback qmk-state-daemon config for i3status-rust custom_dbus using
+# CommandSink with inline busctl commands instead of native DbusSink.
+# This remains event-driven and avoids shell scripts, but spawns busctl
+# processes per deduped keyboard state change.
+
+vid = "0x303A"
+pid = "0x4044"
+
+[sink]
+kind = "command"
+event = "qmk_state_changed"
+commands = [
+  ["busctl", "--user", "call", "rs.i3status", "/qmk_state", "rs.i3status.custom", "SetIcon", "s", "keyboard"],
+  ["busctl", "--user", "call", "rs.i3status", "/qmk_state", "rs.i3status.custom", "SetText", "ss", "{top_layer_name} {mods_letters}", "{top_layer_name}"],
+]

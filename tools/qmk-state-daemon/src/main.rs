@@ -18,7 +18,7 @@ use qmk_state_daemon::rpc::{self, Client, RpcRequest, Server};
 use qmk_state_daemon::sink::{EventArg, EventSink};
 #[cfg(target_os = "macos")]
 use qmk_state_daemon::sinks::SketchybarSink;
-use qmk_state_daemon::sinks::{CommandSink, NullSink};
+use qmk_state_daemon::sinks::{CommandSink, DbusSink, DbusSinkConfig, NullSink};
 use qmk_state_daemon::transport::HidApiTransport;
 use qmk_state_daemon::vial_qsid;
 
@@ -112,7 +112,7 @@ struct RunArgs {
     event_name: String,
 
     /// Runtime-selected sink. Overrides config when supplied.
-    #[arg(long, value_parser = ["sketchybar", "command", "null"])]
+    #[arg(long, value_parser = ["sketchybar", "command", "dbus", "null"])]
     sink: Option<String>,
 
     /// Program argv for command sink. Repeat the flag for arguments:
@@ -327,6 +327,15 @@ fn sink_config_from_args(args: &RunArgs, fallback: SinkConfig) -> Result<SinkCon
             program: Some(args.command.clone()),
             commands: None,
         }),
+        Some("dbus") => Ok(SinkConfig::Dbus {
+            event: Some(args.event_name.clone()),
+            service: None,
+            path: None,
+            interface: None,
+            text: None,
+            short_text: None,
+            icon: None,
+        }),
         Some("sketchybar") => Ok(SinkConfig::Sketchybar {
             event: Some(args.event_name.clone()),
         }),
@@ -338,6 +347,7 @@ fn event_name_for(cfg: &SinkConfig, cli_default: &str) -> String {
     match cfg {
         SinkConfig::Sketchybar { event }
         | SinkConfig::Command { event, .. }
+        | SinkConfig::Dbus { event, .. }
         | SinkConfig::Null { event } => event.clone().unwrap_or_else(|| cli_default.to_string()),
     }
 }
@@ -358,6 +368,32 @@ fn make_sink(
             command_programs(program, commands)?,
             state_file.to_path_buf(),
         )?)),
+        SinkConfig::Dbus {
+            service,
+            path,
+            interface,
+            text,
+            short_text,
+            icon,
+            ..
+        } => Ok(Box::new(DbusSink::new(DbusSinkConfig {
+            service: service
+                .clone()
+                .unwrap_or_else(|| qmk_state_daemon::sinks::dbus::DEFAULT_DBUS_SERVICE.to_string()),
+            path: path
+                .clone()
+                .unwrap_or_else(|| qmk_state_daemon::sinks::dbus::DEFAULT_DBUS_PATH.to_string()),
+            interface: interface.clone().unwrap_or_else(|| {
+                qmk_state_daemon::sinks::dbus::DEFAULT_DBUS_INTERFACE.to_string()
+            }),
+            text: text
+                .clone()
+                .unwrap_or_else(|| qmk_state_daemon::sinks::dbus::DEFAULT_DBUS_TEXT.to_string()),
+            short_text: short_text.clone().unwrap_or_else(|| {
+                qmk_state_daemon::sinks::dbus::DEFAULT_DBUS_SHORT_TEXT.to_string()
+            }),
+            icon: icon.clone(),
+        })?)),
         SinkConfig::Sketchybar { .. } => make_sketchybar_sink(),
     }
 }
