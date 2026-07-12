@@ -16,6 +16,7 @@ sketchybar.
 - `launchd/com.user.qmk-state-daemon.plist` — auto-start template.
 - `justfile` — build/install/launchd recipes.
 - `VALIDATION.md` — hardware validation walkthrough.
+- `RUNBOOK.md` — recovery steps for stale sketchybar / stuck QSID RPC / launchd issues.
 
 Sketchybar items live in the user's sketchybar Lua config
 (`~/.config/sketchybar/lua/items/qmk-layer.lua` and `qmk-mods.lua`),
@@ -122,3 +123,5 @@ Dispatch code doesn't change.
   your terminal in System Settings → Privacy & Security.
 - launchd not restarting → `just launchd-status`, then
   `just launchd-logs`.
+- stale sketchybar or broken `qsid` commands → follow `RUNBOOK.md`
+  (especially the `just install` + `launchctl kickstart -k ...` recovery flow).
