@@ -98,14 +98,8 @@ mod tests {
     #[test]
     fn letters_combined_csag_order() {
         // Ctrl + Shift + Gui in any bit order should render "CSG".
-        assert_eq!(
-            mods_to_letters(MOD_LCTL | MOD_LSFT | MOD_LGUI),
-            "CSG"
-        );
-        assert_eq!(
-            mods_to_letters(MOD_LGUI | MOD_LSFT | MOD_LCTL),
-            "CSG"
-        );
+        assert_eq!(mods_to_letters(MOD_LCTL | MOD_LSFT | MOD_LGUI), "CSG");
+        assert_eq!(mods_to_letters(MOD_LGUI | MOD_LSFT | MOD_LCTL), "CSG");
     }
 
     #[test]

@@ -10,6 +10,10 @@ PLIST := "com.user.qmk-state-daemon.plist"
 PLIST_SRC := justfile_directory() + "/launchd/" + PLIST
 PLIST_DST := env_var("HOME") + "/Library/LaunchAgents/" + PLIST
 LAUNCHD_LABEL := "com.user.qmk-state-daemon"
+SYSTEMD_UNIT := "qmk-state-daemon.service"
+SYSTEMD_SRC := justfile_directory() + "/systemd/" + SYSTEMD_UNIT
+SYSTEMD_DST := env_var("HOME") + "/.config/systemd/user/" + SYSTEMD_UNIT
+CONFIG_PATH := env_var_or_default("XDG_CONFIG_HOME", env_var("HOME") + "/.config") + "/qmk-state-daemon/config.toml"
 
 default:
     @just --list
@@ -83,6 +87,52 @@ resume-launchd: install
 
 restart-launchd: pause-launchd resume-launchd
 
+# --- systemd user service (Linux) ---
+
+install-systemd-user: install
+    mkdir -p "$HOME/.config/systemd/user"
+    install -m 0644 "{{ SYSTEMD_SRC }}" "{{ SYSTEMD_DST }}"
+    if [ ! -f "{{ CONFIG_PATH }}" ]; then "{{ INSTALL_DIR }}/{{ BIN }}" write-default-config --path "{{ CONFIG_PATH }}"; fi
+    systemctl --user daemon-reload
+    systemctl --user enable --now {{ SYSTEMD_UNIT }}
+    @echo "systemd user service loaded: {{ SYSTEMD_UNIT }}"
+    @echo "config: {{ CONFIG_PATH }}"
+    @echo "status: just systemd-status"
+    @echo "logs: just systemd-logs"
+
+uninstall-systemd-user:
+    -systemctl --user disable --now {{ SYSTEMD_UNIT }}
+    rm -f "{{ SYSTEMD_DST }}"
+    systemctl --user daemon-reload
+
+restart-systemd-user: install
+    systemctl --user restart {{ SYSTEMD_UNIT }}
+
+systemd-status:
+    systemctl --user status {{ SYSTEMD_UNIT }} --no-pager
+
+systemd-logs:
+    journalctl --user -u {{ SYSTEMD_UNIT }} -f
+
+reload-config:
+    "{{ INSTALL_DIR }}/{{ BIN }}" reload-config
+
+# Install a udev rule that grants users in the input group access to the
+# raw-HID interface. Pass lowercase or uppercase hex, with or without 0x.
+install-udev-rule vid="303a" pid="4044":
+    rule='/etc/udev/rules.d/70-qmk-state-daemon.rules'; \
+    vid_clean=$$(printf '%s' '{{ vid }}' | tr '[:upper:]' '[:lower:]' | sed 's/^0x//'); \
+    pid_clean=$$(printf '%s' '{{ pid }}' | tr '[:upper:]' '[:lower:]' | sed 's/^0x//'); \
+    printf 'KERNEL=="hidraw*", SUBSYSTEM=="hidraw", ATTRS{idVendor}=="%s", ATTRS{idProduct}=="%s", TAG+="uaccess", GROUP="input", MODE="0660"\n' "$$vid_clean" "$$pid_clean" | sudo tee "$$rule" >/dev/null; \
+    sudo udevadm control --reload-rules; \
+    sudo udevadm trigger; \
+    printf 'installed %s for %s:%s\n' "$$rule" "$$vid_clean" "$$pid_clean"; \
+    printf 'unplug/replug the keyboard, then run: just detect\n'
+
+udev-rule-help vid="303a" pid="4044":
+    @echo "Run: just install-udev-rule {{ vid }} {{ pid }}"
+    @echo "Then unplug/replug the keyboard and verify with: just detect"
+
 # --- convenience ---
 
 detect:
@@ -90,3 +140,7 @@ detect:
 
 run-dry:
     ./target/release/{{ BIN }} run --dry-run
+
+i3status-example-paths:
+    @echo "command sink helper: {{ justfile_directory() }}/examples/i3status-rust/qmk-state-to-file.sh"
+    @echo "i3status-rust snippet: {{ justfile_directory() }}/examples/i3status-rust/config-example.toml"

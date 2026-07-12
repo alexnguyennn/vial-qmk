@@ -18,6 +18,7 @@ use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
@@ -92,10 +93,7 @@ pub fn qsid_set_via_broker(
 fn send_via_broker(broker: &BrokerSender, packet: [u8; vial_qsid::PACKET_LEN]) -> Result<Vec<u8>> {
     let (tx, rx) = mpsc::channel();
     broker
-        .send(BrokerRequest {
-            packet,
-            reply: tx,
-        })
+        .send(BrokerRequest { packet, reply: tx })
         .map_err(|_| anyhow!("broker channel closed"))?;
     rx.recv_timeout(Duration::from_secs(2))
         .map_err(|e| anyhow!("no response from broker: {e}"))?
@@ -109,8 +107,16 @@ fn send_via_broker(broker: &BrokerSender, packet: [u8; vial_qsid::PACKET_LEN]) -
 #[serde(tag = "cmd", rename_all = "snake_case")]
 pub enum RpcRequest {
     QsidList,
-    QsidGet { qsid: u16, width: Option<usize> },
-    QsidSet { qsid: u16, value: u32, width: Option<usize> },
+    QsidGet {
+        qsid: u16,
+        width: Option<usize>,
+    },
+    QsidSet {
+        qsid: u16,
+        value: u32,
+        width: Option<usize>,
+    },
+    ReloadConfig,
     Ping,
 }
 
@@ -141,6 +147,7 @@ pub struct Server {
     listener: UnixListener,
     broker: BrokerSender,
     path: PathBuf,
+    reload: Option<Arc<dyn Fn() -> Result<serde_json::Value> + Send + Sync>>,
 }
 
 impl Server {
@@ -151,9 +158,22 @@ impl Server {
             std::fs::remove_file(&path)
                 .with_context(|| format!("removing stale socket {}", path.display()))?;
         }
-        let listener = UnixListener::bind(&path)
-            .with_context(|| format!("binding {}", path.display()))?;
-        Ok(Self { listener, broker, path })
+        let listener =
+            UnixListener::bind(&path).with_context(|| format!("binding {}", path.display()))?;
+        Ok(Self {
+            listener,
+            broker,
+            path,
+            reload: None,
+        })
+    }
+
+    pub fn with_reload_handler(
+        mut self,
+        reload: impl Fn() -> Result<serde_json::Value> + Send + Sync + 'static,
+    ) -> Self {
+        self.reload = Some(Arc::new(reload));
+        self
     }
 
     /// Run the accept loop in the current thread. Blocks.
@@ -167,8 +187,9 @@ impl Server {
                 }
             };
             let broker = self.broker.clone();
+            let reload = self.reload.clone();
             thread::spawn(move || {
-                if let Err(e) = handle_client(stream, broker) {
+                if let Err(e) = handle_client(stream, broker, reload) {
                     eprintln!("client error: {e}");
                 }
             });
@@ -183,7 +204,11 @@ impl Drop for Server {
     }
 }
 
-fn handle_client(stream: UnixStream, broker: BrokerSender) -> Result<()> {
+fn handle_client(
+    stream: UnixStream,
+    broker: BrokerSender,
+    reload: Option<Arc<dyn Fn() -> Result<serde_json::Value> + Send + Sync>>,
+) -> Result<()> {
     let mut reader = BufReader::new(stream.try_clone()?);
     let mut writer = stream;
     let mut line = String::new();
@@ -194,7 +219,7 @@ fn handle_client(stream: UnixStream, broker: BrokerSender) -> Result<()> {
             continue;
         }
         let resp = match serde_json::from_str::<RpcRequest>(trimmed) {
-            Ok(req) => dispatch(&broker, req),
+            Ok(req) => dispatch(&broker, reload.as_deref(), req),
             Err(e) => RpcResponse::err(format!("parse error: {e}")),
         };
         let mut buf = serde_json::to_string(&resp)?;
@@ -205,29 +230,35 @@ fn handle_client(stream: UnixStream, broker: BrokerSender) -> Result<()> {
     Ok(())
 }
 
-fn dispatch(broker: &BrokerSender, req: RpcRequest) -> RpcResponse {
+fn dispatch(
+    broker: &BrokerSender,
+    reload: Option<&(dyn Fn() -> Result<serde_json::Value> + Send + Sync)>,
+    req: RpcRequest,
+) -> RpcResponse {
     let result: Result<serde_json::Value> = match req {
         RpcRequest::Ping => Ok(serde_json::json!({"ok": true, "pong": true})),
-        RpcRequest::QsidList => {
-            qsid_list_via_broker(broker).map(|qsids| {
-                let known = vial_qsid::known_qsids();
-                let entries: Vec<_> = qsids
-                    .iter()
-                    .map(|q| {
-                        let (name, width) = known
-                            .get(q)
-                            .map(|(n, w)| (Some(*n), Some(*w)))
-                            .unwrap_or((None, None));
-                        serde_json::json!({
-                            "qsid": q,
-                            "name": name,
-                            "width": width,
-                        })
+        RpcRequest::ReloadConfig => match reload {
+            Some(f) => f(),
+            None => Ok(serde_json::json!({"ok": false, "error": "reload handler not installed"})),
+        },
+        RpcRequest::QsidList => qsid_list_via_broker(broker).map(|qsids| {
+            let known = vial_qsid::known_qsids();
+            let entries: Vec<_> = qsids
+                .iter()
+                .map(|q| {
+                    let (name, width) = known
+                        .get(q)
+                        .map(|(n, w)| (Some(*n), Some(*w)))
+                        .unwrap_or((None, None));
+                    serde_json::json!({
+                        "qsid": q,
+                        "name": name,
+                        "width": width,
                     })
-                    .collect();
-                serde_json::json!({"ok": true, "qsids": entries})
-            })
-        }
+                })
+                .collect();
+            serde_json::json!({"ok": true, "qsids": entries})
+        }),
         RpcRequest::QsidGet { qsid, width } => {
             let w = vial_qsid::resolve_width(qsid, width);
             match w {
@@ -350,9 +381,7 @@ fn perform_qsid_request<T: crate::transport::HidTransport>(
     // Read until we see a non-state packet (i.e. QSID response). Use a
     // bounded timeout so we don't hang if the device never responds.
     for _ in 0..32 {
-        let n = transport
-            .read_timeout(buf, 500)
-            .context("qsid read")?;
+        let n = transport.read_timeout(buf, 500).context("qsid read")?;
         if n == 0 {
             continue;
         }

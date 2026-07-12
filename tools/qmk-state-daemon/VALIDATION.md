@@ -4,7 +4,7 @@ Manual test steps to validate the raw-HID broadcast pipeline end-to-end
 after flashing the combined firmware (Workstream A flow-tap fix +
 Workstream B state broadcast) from branch `feature/initial-customise`.
 
-Daemon lives on branch `feature/qmk-state-daemon`.
+Daemon lives on branch `feature/initial-customise`.
 
 ## 0. Prereqs
 
@@ -33,7 +33,7 @@ Steps:
 
 ```bash
 cd /Users/alex/bench/cfg/vial-qmk
-git switch feature/qmk-state-daemon
+git switch feature/initial-customise
 cargo build --release --manifest-path tools/qmk-state-daemon/Cargo.toml
 ```
 
@@ -59,20 +59,21 @@ Troubleshooting:
 - Only `usage_page` other than `FF60`: firmware didn't build raw HID.
   Check `qmk info -kb svalboard/trackball/pmw3389/left -km alex | grep -i raw`.
 
-## 4. Capture one packet (dry-run)
+## 4. Capture packets (dry-run)
 
 ```bash
-tools/qmk-state-daemon/target/release/qmk-state-daemon once \
+tools/qmk-state-daemon/target/release/qmk-state-daemon run \
   --state-file /tmp/qmk_state.json --dry-run
 ```
 
-This blocks until it receives one packet. Trigger options:
+This runs until interrupted. Trigger options:
 - Wait up to 5 seconds — firmware fires a heartbeat.
 - Press any key that changes layer or mods (e.g. tap `MO(NAS)`,
   hold `LSFT_T(KC_V)`).
 - Unplug/replug USB — fires initial snapshot on connect.
 
-On success the command exits silently. Inspect the JSON:
+On success the command keeps running silently. Inspect the JSON from
+another terminal:
 
 ```bash
 cat /tmp/qmk_state.json | jq
@@ -126,7 +127,60 @@ Exercise the keyboard and confirm the JSON updates:
 | Switch to `FUNC` layer                    | `top_layer_name` → `FN`                             |
 | One-shot mod (`OSM(KC_LSFT)` if bound)    | `mods_state` → `osm`                                |
 
-## 6. Known gotchas
+Stop the foreground daemon with Ctrl-C before continuing.
+
+## 6. Validate config and RPC
+
+```bash
+tools/qmk-state-daemon/target/release/qmk-state-daemon write-default-config \
+  --path /tmp/qmk-state-daemon.toml --force
+tools/qmk-state-daemon/target/release/qmk-state-daemon run \
+  --config /tmp/qmk-state-daemon.toml \
+  --state-file /tmp/qmk_state.json \
+  --socket /tmp/qmk-state-daemon.sock \
+  --dry-run
+```
+
+From another terminal:
+
+```bash
+tools/qmk-state-daemon/target/release/qmk-state-daemon ping \
+  --socket /tmp/qmk-state-daemon.sock
+tools/qmk-state-daemon/target/release/qmk-state-daemon qsid get 28 \
+  --socket /tmp/qmk-state-daemon.sock
+tools/qmk-state-daemon/target/release/qmk-state-daemon reload-config \
+  --socket /tmp/qmk-state-daemon.sock
+```
+
+Expected:
+
+- `ping` returns `ok: true`.
+- QSID 28 returns the configured flow-tap shift delta, usually `25`.
+- `reload-config` returns `ok: true` and lists `vid`, `pid`, `socket` as restart-required fields.
+
+## 7. Service validation
+
+macOS:
+
+```bash
+cd tools/qmk-state-daemon
+just install-launchd
+qmk-state-daemon ping
+qmk-state-daemon qsid get 28
+sketchybar --reload
+```
+
+Linux/systemd user service:
+
+```bash
+cd tools/qmk-state-daemon
+just install-udev-rule 303a 4044   # only if hidraw access fails
+just install-systemd-user
+qmk-state-daemon ping
+qmk-state-daemon qsid get 28
+```
+
+## 8. Known gotchas
 
 - **Vial GUI running**: quit it before running the daemon; it holds the
   raw-HID interface exclusively on some OSes.
@@ -141,14 +195,14 @@ Exercise the keyboard and confirm the JSON updates:
 - **No packets ever**: check daemon stderr; add `RUST_LOG=debug` if
   logging is ever wired in. For now, `--dry-run` prints nothing on
   success — packet reception is silent.
+- **Linux hidraw permission denied**: run `just install-udev-rule 303a 4044`,
+  unplug/replug the keyboard, then retry `just detect`.
 
-## 7. Next steps after validation
+## 9. Next steps after validation
 
 Once steps 3–5 pass on hardware:
-- Add sketchybar plugin + item wiring (`tools/qmk-state-daemon/sketchybar/`).
-- Add `launchd` plist + `justfile` for install/uninstall.
-- Persist sketchybar config to chezmoi (only after end-to-end works).
-- Merge `feature/qmk-state-daemon` → `vial`, rebase
-  `feature/initial-customise` on top.
+- Keep using daemon RPC for QSIDs 28/29.
+- Use launchd on macOS or systemd user service on Linux for daily use.
+- Persist desktop integration config only after end-to-end works.
 
 Report which step fails (if any) and paste the JSON / error output.

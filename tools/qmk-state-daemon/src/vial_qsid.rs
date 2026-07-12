@@ -74,7 +74,11 @@ pub fn build_set_packet(qsid: u16, value: u32, width: usize) -> Result<[u8; PACK
     if !matches!(width, 1 | 2 | 4) {
         bail!("width must be 1, 2, or 4 bytes");
     }
-    let max: u64 = if width == 4 { u32::MAX as u64 } else { 1u64 << (width * 8) };
+    let max: u64 = if width == 4 {
+        u32::MAX as u64
+    } else {
+        1u64 << (width * 8)
+    };
     if (value as u64) >= max && width < 4 {
         bail!("value {value} out of range for width={width}B");
     }

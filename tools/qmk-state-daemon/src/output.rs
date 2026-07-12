@@ -30,8 +30,7 @@ pub fn write_state_json(path: &Path, value: &serde_json::Value) -> Result<()> {
         .parent()
         .filter(|p| !p.as_os_str().is_empty())
         .unwrap_or_else(|| Path::new("."));
-    std::fs::create_dir_all(dir)
-        .with_context(|| format!("creating {}", dir.display()))?;
+    std::fs::create_dir_all(dir).with_context(|| format!("creating {}", dir.display()))?;
     let mut tmp = NamedTempFile::new_in(dir)
         .with_context(|| format!("creating tempfile in {}", dir.display()))?;
     serde_json::to_writer(&mut tmp, value)?;

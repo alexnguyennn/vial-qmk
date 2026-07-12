@@ -1,0 +1,12 @@
+[Unit]
+Description=QMK state daemon
+Documentation=file:%h/bench/cfg/vial-qmk/tools/qmk-state-daemon/README.md
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/qmk-state-daemon run
+Restart=on-failure
+RestartSec=2s
+
+[Install]
+WantedBy=default.target

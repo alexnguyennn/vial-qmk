@@ -108,8 +108,7 @@ impl PacketHandler for StateHandler {
         let reason = buf[2];
         let top_layer = buf[3];
         let default_layer = buf[4];
-        let layer_state =
-            u32::from_le_bytes([buf[5], buf[6], buf[7], buf[8]]);
+        let layer_state = u32::from_le_bytes([buf[5], buf[6], buf[7], buf[8]]);
         let real_mods = buf[9];
         let weak_mods = buf[10];
         let oneshot_mods = buf[11];
@@ -117,9 +116,7 @@ impl PacketHandler for StateHandler {
 
         let display_bits = real_mods | weak_mods | oneshot_mods | locked_mods;
         let mods_letters = mods_to_letters(display_bits);
-        let mods_state =
-            resolve_state(real_mods, weak_mods, oneshot_mods, locked_mods)
-                .as_str();
+        let mods_state = resolve_state(real_mods, weak_mods, oneshot_mods, locked_mods).as_str();
 
         let payload = StatePayload {
             kind: "state",
@@ -154,7 +151,7 @@ mod tests {
         buf[2] = REASON_LAYER | REASON_MODS;
         buf[3] = 4; // NAS
         buf[4] = 0; // BASE
-        // layer_state = (1<<0) | (1<<4) = 0x11
+                    // layer_state = (1<<0) | (1<<4) = 0x11
         buf[5..9].copy_from_slice(&0x0000_0011u32.to_le_bytes());
         buf[9] = MOD_LCTL | MOD_LSFT; // held CS
         buf[10] = 0;
@@ -175,8 +172,7 @@ mod tests {
         assert_eq!(v["layer_state"], 0x11);
         assert_eq!(v["mods_letters"], "CS");
         assert_eq!(v["mods_state"], "held");
-        let flags: Vec<String> =
-            serde_json::from_value(v["reason_flags"].clone()).unwrap();
+        let flags: Vec<String> = serde_json::from_value(v["reason_flags"].clone()).unwrap();
         assert_eq!(flags, vec!["layer", "mods"]);
     }
 

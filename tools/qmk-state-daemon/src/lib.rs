@@ -2,13 +2,15 @@
 //!
 //! See `PLAN_flow_tap_shift.md` (Workstream B) for the full design.
 
+pub mod config;
 pub mod handlers;
 pub mod layer_names;
 pub mod mods;
 pub mod output;
 pub mod packet;
 pub mod rpc;
-pub mod sketchybar;
+pub mod sink;
+pub mod sinks;
 pub mod transport;
 pub mod vial_qsid;
 
@@ -19,7 +21,7 @@ use anyhow::Result;
 use crate::handlers::state::{STATE_MSG_ID, STATE_PACKET_LEN};
 use crate::output::StateWriter;
 use crate::packet::Registry;
-use crate::sketchybar::{EventArg, Notifier};
+use crate::sink::{EventArg, EventSink};
 use crate::transport::HidTransport;
 
 pub const PACKET_LEN: usize = STATE_PACKET_LEN;
@@ -98,7 +100,7 @@ fn event_args_from(value: &serde_json::Value) -> Vec<EventArg> {
 ///
 /// Returns when `once` is true and a packet was successfully processed,
 /// or when `max_reads` is reached (test-only cap).
-pub fn run<T: HidTransport, W: StateWriter, N: Notifier>(
+pub fn run<T: HidTransport, W: StateWriter, N: EventSink>(
     transport: &mut T,
     registry: &Registry,
     writer: &mut W,
@@ -130,7 +132,8 @@ pub fn run<T: HidTransport, W: StateWriter, N: Notifier>(
                     if changed {
                         writer.write(&value)?;
                         let args = event_args_from(&value);
-                        notifier.notify(&opts.sketchybar_event, &args)?;
+                        let payload_json = serde_json::to_string(&value)?;
+                        notifier.emit(&opts.sketchybar_event, &args, &payload_json)?;
                         last_key = Some(key);
                     }
                 }
@@ -168,7 +171,7 @@ mod tests {
     use crate::mods::MOD_LSFT;
     use crate::output::StateWriter;
     use crate::packet::PacketHandler;
-    use crate::sketchybar::recording::RecordingNotifier;
+    use crate::sink::recording::RecordingSink;
     use crate::transport::mock::MockTransport;
     use serde_json::Value;
     use std::sync::{Arc, Mutex};
@@ -200,7 +203,7 @@ mod tests {
         let registry = Registry::builder().handler(StateHandler::new()).build();
         let writer = RecordingWriter::default();
         let mut writer_clone = writer.clone();
-        let notifier = RecordingNotifier::new();
+        let notifier = RecordingSink::new();
 
         let opts = RunOptions {
             once: true,
@@ -241,7 +244,7 @@ mod tests {
         let mut transport = MockTransport::new(reads);
         let registry = Registry::builder().handler(StateHandler::new()).build();
         let mut writer = RecordingWriter::default();
-        let notifier = RecordingNotifier::new();
+        let notifier = RecordingSink::new();
 
         let opts = RunOptions {
             once: true,
@@ -285,7 +288,7 @@ mod tests {
         let mut transport = MockTransport::new(reads);
         let registry = Registry::builder().handler(StateHandler::new()).build();
         let mut writer = RecordingWriter::default();
-        let notifier = RecordingNotifier::new();
+        let notifier = RecordingSink::new();
 
         let opts = RunOptions {
             once: false,
@@ -316,7 +319,7 @@ mod tests {
         let mut transport = MockTransport::new(reads);
         let registry = Registry::builder().handler(StateHandler::new()).build();
         let mut writer = RecordingWriter::default();
-        let notifier = RecordingNotifier::new();
+        let notifier = RecordingSink::new();
 
         let opts = RunOptions {
             once: false,
@@ -335,8 +338,7 @@ mod tests {
         let mut buf = state_packet();
         buf[2] = REASON_INITIAL;
         let v1 = StateHandler::new().decode(&buf).unwrap();
-        buf[2] = crate::handlers::state::REASON_LAYER
-            | crate::handlers::state::REASON_MODS;
+        buf[2] = crate::handlers::state::REASON_LAYER | crate::handlers::state::REASON_MODS;
         let v2 = StateHandler::new().decode(&buf).unwrap();
 
         assert_ne!(v1, v2, "raw payloads should differ (reason bytes)");
@@ -366,7 +368,7 @@ mod tests {
         let mut transport = MockTransport::new(reads);
         let registry = Registry::builder().handler(StateHandler::new()).build();
         let mut writer = RecordingWriter::default();
-        let notifier = RecordingNotifier::new();
+        let notifier = RecordingSink::new();
 
         let opts = RunOptions {
             once: false,
@@ -397,7 +399,7 @@ mod tests {
         let mut transport = MockTransport::new(reads);
         let registry = Registry::builder().handler(StateHandler::new()).build();
         let mut writer = RecordingWriter::default();
-        let notifier = RecordingNotifier::new();
+        let notifier = RecordingSink::new();
 
         let opts = RunOptions {
             once: false,
@@ -422,7 +424,7 @@ mod tests {
         let mut transport = MockTransport::new(reads);
         let registry = Registry::builder().handler(StateHandler::new()).build();
         let mut writer = RecordingWriter::default();
-        let notifier = RecordingNotifier::new();
+        let notifier = RecordingSink::new();
 
         let opts = RunOptions {
             once: false,
@@ -444,7 +446,7 @@ mod tests {
         let mut transport = MockTransport::new(vec![Ok(state_packet())]);
         let registry = Registry::builder().handler(StateHandler::new()).build();
         let mut writer = RecordingWriter::default();
-        let notifier = RecordingNotifier::new();
+        let notifier = RecordingSink::new();
 
         let opts = RunOptions {
             once: true,

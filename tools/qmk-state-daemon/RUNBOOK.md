@@ -10,7 +10,7 @@ Recovery steps for the common failure modes seen during local development and da
 - `qmk-state-daemon ping` still works, but state looks stale.
 - `qmk-state-daemon qsid list` returns no QSIDs.
 - `qmk-state-daemon qsid get 28` or `get 29` returns `0` unexpectedly.
-- `/tmp/qmk_state.json` exists but its mtime stops moving.
+- The state JSON exists but its mtime stops moving.
 
 ## Quick Triage
 
@@ -23,12 +23,21 @@ ls -la /tmp/qmk_state.json /tmp/qmk-state-daemon.sock
 tail -20 ~/Library/Logs/qmk-state-daemon.err.log
 ```
 
+Linux/systemd equivalent:
+
+```bash
+qmk-state-daemon ping
+systemctl --user status qmk-state-daemon.service --no-pager
+journalctl --user -u qmk-state-daemon.service -n 30 --no-pager
+ls -la "${XDG_STATE_HOME:-$HOME/.local/state}/qmk-state-daemon/state.json" "${XDG_RUNTIME_DIR:-/tmp}/qmk-state-daemon.sock"
+```
+
 Healthy signals:
 
 - `ping` returns `{ "ok": true, "pong": true }`
 - launchd reports `state = running`
 - `/tmp/qmk-state-daemon.sock` exists
-- `/tmp/qmk_state.json` mtime is recent
+- state JSON mtime is recent
 - stderr log is not growing with fresh errors
 
 ## Known Failure Modes
@@ -39,7 +48,8 @@ The daemon is the sole raw-HID owner. Vial GUI and
 `keyboards/svalboard/keymaps/alex/tools/vial-qs.py` use the same HID
 interface, so they **will** fight the daemon.
 
-There is currently no in-process daemon suspend flag; use launchd.
+There is currently no in-process daemon suspend flag; stop the service
+manager job.
 
 Pause / resume flow:
 
@@ -72,6 +82,14 @@ Notes:
 - Use daemon RPC (`qmk-state-daemon qsid ...`) for normal QSID work.
 - Use Vial GUI only for Vial-visible settings / keymap changes.
 - Vial GUI still cannot see custom QSIDs 28/29.
+
+Linux/systemd flow:
+
+```bash
+systemctl --user stop qmk-state-daemon.service
+# use Vial GUI or direct HID tooling
+systemctl --user start qmk-state-daemon.service
+```
 
 ### 1. Daemon crashed at startup on VID/PID parsing
 
@@ -145,6 +163,56 @@ sketchybar --query qmk-mods
 cat /tmp/qmk_state.json
 ```
 
+### 3b. Linux bar output is stale after config changes
+
+If only the sink command, event name, or state-file path changed, reload
+config in-process:
+
+```bash
+qmk-state-daemon reload-config
+```
+
+If VID, PID, socket path, or hidraw permissions changed, restart the
+service:
+
+```bash
+systemctl --user restart qmk-state-daemon.service
+journalctl --user -u qmk-state-daemon.service -n 30 --no-pager
+```
+
+If the daemon cannot open hidraw, install or refresh the udev rule:
+
+```bash
+cd ~/bench/cfg/vial-qmk/tools/qmk-state-daemon
+just install-udev-rule 303a 4044
+# unplug/replug the keyboard
+just detect
+```
+
+For i3status-rust, verify the custom block uses `watch_files` and
+`interval = "once"` with the same concrete path that the helper writes:
+
+```toml
+[[block]]
+block = "custom"
+command = "cat /run/user/1000/qmk-state-daemon.i3status 2>/dev/null || printf '?'"
+watch_files = ["/run/user/1000/qmk-state-daemon.i3status"]
+interval = "once"
+format = " $text "
+```
+
+Check the file directly:
+
+```bash
+cat "${XDG_RUNTIME_DIR:-/tmp}/qmk-state-daemon.i3status"
+```
+
+If the file changes but the bar does not, restart/reload the Sway bar so
+i3status-rust reloads its config. If the file does not change, check the
+daemon command sink path in
+`${XDG_CONFIG_HOME:-$HOME/.config}/qmk-state-daemon/config.toml` and run
+`qmk-state-daemon reload-config`.
+
 ### 4. Python fallback script cannot open HID
 
 The fallback script `keyboards/svalboard/keymaps/alex/tools/vial-qs.py` is direct-HID and cannot share the interface with the daemon.
@@ -166,9 +234,18 @@ just list
 just flow-status
 ```
 
+On Linux, replace the launchctl commands with:
+
+```bash
+systemctl --user stop qmk-state-daemon.service
+systemctl --user start qmk-state-daemon.service
+```
+
 ## Full Recovery Sequence
 
 Use this when things look weird and you want a deterministic reset:
+
+macOS:
 
 ```bash
 cd ~/bench/cfg/vial-qmk/tools/qmk-state-daemon
@@ -182,6 +259,19 @@ qmk-state-daemon qsid get 29
 sketchybar --reload
 ```
 
+Linux:
+
+```bash
+cd ~/bench/cfg/vial-qmk/tools/qmk-state-daemon
+just install
+systemctl --user restart qmk-state-daemon.service
+sleep 2
+qmk-state-daemon ping
+qmk-state-daemon qsid list | tail
+qmk-state-daemon qsid get 28
+qmk-state-daemon qsid get 29
+```
+
 If that still fails, inspect:
 
 ```bash
@@ -189,6 +279,15 @@ just launchd-status
 just launchd-logs
 qmk-state-daemon list
 ls -la /tmp/qmk_state.json /tmp/qmk-state-daemon.sock
+```
+
+Linux equivalent:
+
+```bash
+just systemd-status
+just systemd-logs
+qmk-state-daemon list
+ls -la "${XDG_STATE_HOME:-$HOME/.local/state}/qmk-state-daemon/state.json" "${XDG_RUNTIME_DIR:-/tmp}/qmk-state-daemon.sock"
 ```
 
 ## Sanity Checks
@@ -200,4 +299,5 @@ Healthy outputs should include:
   - `28  flow_tap_shift_delta          2B`
   - `29  flow_tap_shift_min_clamp      1B`
 - `cat /tmp/qmk_state.json` shows current `top_layer_name`
+- `cat ${XDG_STATE_HOME:-$HOME/.local/state}/qmk-state-daemon/state.json` shows current `top_layer_name`
 - `sketchybar --query qmk-layer` shows `label.value` set to a real layer like `BASE`, `FN`, `NAS`, `MBO`

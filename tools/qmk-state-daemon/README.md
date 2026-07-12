@@ -2,7 +2,8 @@
 
 Rust daemon that reads QMK raw-HID state packets from a Vial-enabled
 keyboard (svalboard by default), decodes them to JSON, atomically writes
-to `/tmp/qmk_state.json`, and triggers a sketchybar event.
+to a state file, triggers a configured event sink, and serves local QSID
+RPCs over a Unix socket.
 
 Push-only: firmware broadcasts on layer/mod change plus a 5s heartbeat.
 Daemon dedupes identical payloads so idle heartbeats don't spam
@@ -10,11 +11,12 @@ sketchybar.
 
 ## Layout
 
-- `src/` — library + binary (see `PLAN_flow_tap_shift.md` for
-  Workstream B architecture: `PacketHandler` + `Registry`, transport
-  abstraction, atomic writer, notifier trait).
+- `src/` — library + binary (`PacketHandler` + `Registry`, transport
+  abstraction, atomic writer, `EventSink` trait).
 - `launchd/com.user.qmk-state-daemon.plist` — auto-start template.
-- `justfile` — build/install/launchd recipes.
+- `systemd/qmk-state-daemon.service` — Linux user-service template.
+- `examples/i3status-rust/` — generic command-sink example for i3status-rust.
+- `justfile` — build/install/launchd/systemd/udev recipes.
 - `VALIDATION.md` — hardware validation walkthrough.
 - `RUNBOOK.md` — recovery steps for stale sketchybar / stuck QSID RPC / launchd issues.
 
@@ -28,6 +30,8 @@ no jq / JSON parsing is needed on the Lua side.
 
 ## Quick start
 
+macOS / sketchybar:
+
 ```bash
 just build
 just detect               # verify raw-HID enumeration
@@ -38,6 +42,21 @@ just install-launchd      # auto-start via launchd
 # Sketchybar lua items already ship in ~/.config/sketchybar/lua/items/
 sketchybar --reload
 ```
+
+Linux / systemd user service:
+
+```bash
+just build
+just detect
+just install-udev-rule 303a 4044   # if hidraw permission is denied
+just install-systemd-user
+just systemd-status
+```
+
+The Linux default config uses the generic command sink and writes a
+sample event log. Replace the command with your bar/update script, or use
+`examples/i3status-rust/qmk-state-to-file.sh` with the i3status-rust
+snippet in `examples/i3status-rust/config-example.toml`.
 
 Once verified, persist the lua items and any dotfile changes via
 chezmoi (`chezmoi re-add`). Do not persist before end-to-end works.
@@ -88,11 +107,14 @@ and clamp.
 ## CLI
 
 Daemon:
-- `qmk-state-daemon run [--vid …] [--pid …] [--state-file …] [--sketchybar-event …] [--socket …] [--dry-run]`
+- `qmk-state-daemon run [--config …] [--vid …] [--pid …] [--state-file …] [--event-name …] [--sink sketchybar|command|null] [--command …] [--socket …] [--dry-run]`
 - `qmk-state-daemon list` — enumerate raw-HID devices.
+- `qmk-state-daemon config-path` — print the default config path.
+- `qmk-state-daemon write-default-config [--path …] [--force]` — create a starter config.
 
 RPC clients (require the daemon to be running):
 - `qmk-state-daemon ping [--socket …]` — health check.
+- `qmk-state-daemon reload-config [--socket …]` — reload sink, event name, and state-file path.
 - `qmk-state-daemon qsid list` — enumerate custom QSIDs on the keyboard.
 - `qmk-state-daemon qsid get <qsid> [--width 1|2|4]` — read a QSID.
 - `qmk-state-daemon qsid set <qsid> <value> [--width 1|2|4]` — write a QSID.
@@ -100,9 +122,161 @@ RPC clients (require the daemon to be running):
 Widths for known QSIDs (see `src/vial_qsid.rs::known_qsids`) are
 resolved automatically. Custom QSIDs need `--width`.
 
-Defaults: VID/PID `0x303A:0x4044` (svalboard), state file
-`/tmp/qmk_state.json`, event `qmk_state_changed`, socket
-`/tmp/qmk-state-daemon.sock`.
+Defaults: VID/PID `0x303A:0x4044` (svalboard), event
+`qmk_state_changed`, config
+`${XDG_CONFIG_HOME:-~/.config}/qmk-state-daemon/config.toml`, state file
+`${XDG_STATE_HOME:-~/.local/state}/qmk-state-daemon/state.json`, and
+socket `${XDG_RUNTIME_DIR:-/tmp}/qmk-state-daemon.sock`.
+
+Config example:
+
+```toml
+vid = "0x303A"
+pid = "0x4044"
+# state_file = "auto"
+# socket = "auto"
+
+[sink]
+kind = "command"
+event = "qmk_state_changed"
+program = ["/path/to/qmk-state-to-file.sh"]
+```
+
+`reload-config` applies sink, event, and state-file changes without
+restarting. VID, PID, and socket changes still require service restart.
+
+## Event Sinks
+
+Sinks receive deduped state changes after the JSON file is written.
+
+- `sketchybar` runs `sketchybar --trigger EVENT k=v ...` and is only available on macOS.
+- `command` runs an arbitrary command with state in environment variables.
+- `null` writes JSON only and emits no external event.
+
+Command sink environment:
+
+- `QMK_EVENT_NAME` — configured event name.
+- `QMK_STATE_JSON` — path to the current state JSON file.
+- `QMK_STATE_PAYLOAD_JSON` — full decoded JSON payload for this event.
+- `QMK_TOP_LAYER_NAME`, `QMK_MODS_LETTERS`, `QMK_MODS_STATE`, and other scalar event fields.
+
+## Linux Systemd Setup
+
+Use this on Regolith/Ubuntu with a Sway session, or any Linux desktop
+with user systemd.
+
+1. Build, install, and create the user service:
+
+```bash
+cd ~/bench/cfg/vial-qmk/tools/qmk-state-daemon
+just install-systemd-user
+```
+
+The recipe installs `~/.local/bin/qmk-state-daemon`, copies
+`systemd/qmk-state-daemon.service` to
+`~/.config/systemd/user/qmk-state-daemon.service`, writes a default config
+if one does not exist, then enables and starts the user service.
+
+2. If the daemon cannot open the keyboard HID interface, install the udev
+rule and reconnect the keyboard:
+
+```bash
+just install-udev-rule 303a 4044
+# unplug/replug the keyboard
+just detect
+```
+
+3. Verify the service and daemon RPC:
+
+```bash
+just systemd-status
+qmk-state-daemon ping
+qmk-state-daemon qsid get 28
+qmk-state-daemon qsid get 29
+```
+
+4. Edit the config at:
+
+```text
+${XDG_CONFIG_HOME:-~/.config}/qmk-state-daemon/config.toml
+```
+
+`reload-config` applies sink, event, and state-file path changes without
+restarting:
+
+```bash
+qmk-state-daemon reload-config
+```
+
+Restart the service after VID, PID, or socket path changes:
+
+```bash
+systemctl --user restart qmk-state-daemon.service
+```
+
+## i3status-rust Setup
+
+The recommended i3status-rust integration is event-like without polling:
+the daemon command sink updates a tiny status file on each keyboard state
+change, and i3status-rust refreshes the custom block via `watch_files`.
+
+1. Find the runtime path i3status-rust should watch:
+
+```bash
+printf '%s\n' "${XDG_RUNTIME_DIR:-/tmp}/qmk-state-daemon.i3status"
+```
+
+Under systemd this is usually `/run/user/$UID/qmk-state-daemon.i3status`.
+Use the concrete path in i3status-rust config because TOML examples may
+not expand shell variables inside `watch_files`.
+
+2. Configure the daemon command sink:
+
+```toml
+vid = "0x303A"
+pid = "0x4044"
+
+[sink]
+kind = "command"
+event = "qmk_state_changed"
+program = ["/home/alex/bench/cfg/vial-qmk/tools/qmk-state-daemon/examples/i3status-rust/qmk-state-to-file.sh"]
+```
+
+Adjust the path if the checkout lives somewhere else.
+
+3. Reload daemon config:
+
+```bash
+qmk-state-daemon reload-config
+```
+
+4. Add a custom block to the i3status-rust config. Replace `1000` with
+the output of `id -u` if needed:
+
+```toml
+[[block]]
+block = "custom"
+command = "cat /run/user/1000/qmk-state-daemon.i3status 2>/dev/null || printf '?'"
+watch_files = ["/run/user/1000/qmk-state-daemon.i3status"]
+interval = "once"
+format = " $text "
+```
+
+5. Reload/restart the Sway bar so i3status-rust picks up its config.
+
+6. Verify updates:
+
+```bash
+cat /run/user/$(id -u)/qmk-state-daemon.i3status
+qmk-state-daemon ping
+```
+
+Hold a layer key or modifier. The daemon should update the watched file
+immediately, and i3status-rust should refresh the block from the file
+watch event rather than waiting for a one-second polling interval.
+
+The helper writes the watched file in place instead of replacing it with
+`mv`, so `watch_files` observes modifications on the configured path.
 
 ## Architecture: one HID owner, socket-based RPC
 
@@ -171,3 +345,5 @@ Dispatch code doesn't change.
 - need to temporarily use Vial GUI or the Python fallback → use
   `just pause-launchd` / `just resume-launchd` (or `daemon-pause` /
   `daemon-resume` from the keymap tools dir).
+- Linux hidraw permission denied → run `just install-udev-rule 303a 4044`,
+  unplug/replug the keyboard, then run `just detect` again.
