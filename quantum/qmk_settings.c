@@ -353,9 +353,19 @@ uint16_t get_flow_tap_term(uint16_t keycode, keyrecord_t *record, uint16_t prev_
         switch (keycode) {
             case LSFT_T(KC_V):
             case LSFT_T(KC_M): {
+            case LT(5, KC_SPC):
+            case LCTL_T(KC_Z):
+            case LGUI_T(KC_X):
+            case LALT_T(KC_C):
+            case LALT_T(KC_COMMA):
+            case LGUI_T(KC_DOT):
+            case LCTL_T(KC_SLASH): {
                 // Shift mod-taps: subtract user-tunable delta from base flow-tap
-                // term, clamped to a user-tunable floor. Prevents wrap on
-                // underflow. Defaults: delta=25, clamp=15.
+                // term, clamped to a user-tunable floor. Also applied to the
+                // main bottom-row alpha/punct mod-taps and LT(5, KC_SPC) so
+                // fast same-hand and opposite-hand rolls keep a shorter,
+                // smoother hold window. Prevents wrap on underflow.
+                // Defaults: delta=25, clamp=15.
                 uint16_t base  = QS.flow_tap_term;
                 uint16_t delta = QS.flow_tap_shift_delta;
                 uint16_t floor = QS.flow_tap_shift_min_clamp;
