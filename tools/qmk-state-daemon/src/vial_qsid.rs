@@ -22,6 +22,7 @@ pub const CMD_QSID_RESET: u8 = 0x0C;
 /// grows. Values here must match `qmk_settings_t` field widths.
 pub fn known_qsids() -> BTreeMap<u16, (&'static str, usize)> {
     let mut m = BTreeMap::new();
+    m.insert(27u16, ("flow_tap_term", 2));
     m.insert(28u16, ("flow_tap_shift_delta", 2));
     m.insert(29u16, ("flow_tap_shift_min_clamp", 1));
     m
@@ -227,6 +228,7 @@ mod tests {
 
     #[test]
     fn resolve_width_hints() {
+        assert_eq!(resolve_width(27, None).unwrap(), 2);
         assert_eq!(resolve_width(28, None).unwrap(), 2);
         assert_eq!(resolve_width(29, None).unwrap(), 1);
         assert_eq!(resolve_width(999, Some(4)).unwrap(), 4);

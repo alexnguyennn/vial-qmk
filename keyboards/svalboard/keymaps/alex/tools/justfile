@@ -30,7 +30,13 @@ get qsid:
 set qsid value:
     {{ DAEMON }} qsid set {{ qsid }} {{ value }}
 
-# --- shortcuts for the flow-tap shift QSIDs (see keymap.c) ---
+# --- shortcuts for the flow-tap QSIDs (see keymap.c) ---
+
+flow-term-get:
+    qmk-state-daemon qsid get 27 --width 2
+
+flow-term-set value:
+    qmk-state-daemon qsid set 27 {{ value }} --width 2
 
 flow-delta-get:
     @just get 28
@@ -45,6 +51,7 @@ flow-clamp-set value:
     @just set 29 {{ value }}
 
 flow-status:
+    @printf 'term (qsid 27): ' && just flow-term-get
     @printf 'delta (qsid 28): ' && just get 28
     @printf 'clamp (qsid 29): ' && just get 29
 
