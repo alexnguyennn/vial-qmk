@@ -239,7 +239,14 @@ fn run_cmd(args: RunArgs) -> Result<()> {
         }
     };
 
-    let (broker, _broker_handle) = rpc::spawn_broker(transport, on_state);
+    let (broker, broker_handle) = rpc::spawn_broker(transport, on_state);
+    // The broker returns once the HID handle is dead; exit so launchd
+    // (KeepAlive) restarts the daemon and reopens the keyboard.
+    std::thread::spawn(move || {
+        let _ = broker_handle.join();
+        eprintln!("HID broker stopped; exiting for launchd to restart");
+        std::process::exit(1);
+    });
 
     // Serve socket in current thread.
     let reload_config_path = config_path.clone();

@@ -20,7 +20,7 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::Arc;
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, bail, Context, Result};
 use serde::{Deserialize, Serialize};
@@ -328,8 +328,41 @@ impl Client {
 /// The broker owns the HID transport. Non-state packets (first byte
 /// != 0xAB) that arrive without an outstanding request are dropped.
 pub fn spawn_broker<T, F>(
+    transport: T,
+    on_state_packet: F,
+) -> (BrokerSender, thread::JoinHandle<()>)
+where
+    T: crate::transport::HidTransport + 'static,
+    F: FnMut(&[u8; vial_qsid::PACKET_LEN]) + Send + 'static,
+{
+    spawn_broker_with(transport, on_state_packet, BrokerLimits::default())
+}
+
+/// When the broker gives up on the HID handle. hidapi never recovers a
+/// handle after the keyboard sleeps, re-enumerates or is unplugged: reads
+/// either error forever or time out forever. Returning ends the broker
+/// thread; `run` then exits so launchd's KeepAlive reopens the device.
+#[derive(Clone, Copy, Debug)]
+pub struct BrokerLimits {
+    /// Consecutive read errors before giving up (each followed by 100ms).
+    pub max_consecutive_errors: u32,
+    /// Longest silence without any packet; firmware heartbeats every 5s.
+    pub idle_timeout: Duration,
+}
+
+impl Default for BrokerLimits {
+    fn default() -> Self {
+        Self {
+            max_consecutive_errors: 20,
+            idle_timeout: Duration::from_secs(30),
+        }
+    }
+}
+
+pub fn spawn_broker_with<T, F>(
     mut transport: T,
     mut on_state_packet: F,
+    limits: BrokerLimits,
 ) -> (BrokerSender, thread::JoinHandle<()>)
 where
     T: crate::transport::HidTransport + 'static,
@@ -338,7 +371,16 @@ where
     let (tx, rx): (BrokerSender, Receiver<BrokerRequest>) = mpsc::channel();
     let handle = thread::spawn(move || {
         let mut buf = [0u8; vial_qsid::PACKET_LEN];
+        let mut consecutive_errors = 0u32;
+        let mut last_packet = Instant::now();
         loop {
+            if last_packet.elapsed() >= limits.idle_timeout {
+                eprintln!(
+                    "broker: no packet from keyboard for {:?}; giving up on HID handle",
+                    limits.idle_timeout
+                );
+                return;
+            }
             // Prefer outbound RPC requests when they're ready; otherwise
             // do a short read for state packets so the loop stays
             // responsive to future RPC traffic.
@@ -358,12 +400,21 @@ where
                     continue;
                 }
                 Ok(_n) => {
+                    consecutive_errors = 0;
+                    last_packet = Instant::now();
                     if !buf.is_empty() && buf[0] == 0xAB {
                         on_state_packet(&buf);
                     }
                     // Drop non-state, non-solicited packets.
                 }
-                Err(_) => {
+                Err(e) => {
+                    consecutive_errors += 1;
+                    if consecutive_errors >= limits.max_consecutive_errors {
+                        eprintln!(
+                            "broker: {consecutive_errors} consecutive HID read errors (last: {e}); giving up on HID handle"
+                        );
+                        return;
+                    }
                     thread::sleep(Duration::from_millis(100));
                 }
             }
@@ -476,5 +527,58 @@ mod tests {
         let mut client = Client::connect(&sock_path).unwrap();
         let resp = client.call(&RpcRequest::Ping).unwrap();
         assert_eq!(resp["pong"], true);
+    }
+
+    #[test]
+    fn broker_gives_up_after_consecutive_read_errors() {
+        let reads = (0..3).map(|_| Err(anyhow!("device gone"))).collect();
+        let transport = MockTransport::new(reads);
+        let limits = BrokerLimits {
+            max_consecutive_errors: 3,
+            idle_timeout: Duration::from_secs(60),
+        };
+        let (_tx, h) = spawn_broker_with(transport, |_| {}, limits);
+        h.join().unwrap();
+    }
+
+    #[test]
+    fn broker_gives_up_when_keyboard_goes_silent() {
+        let transport = MockTransport::new(vec![]);
+        let limits = BrokerLimits {
+            max_consecutive_errors: 1000,
+            idle_timeout: Duration::from_millis(50),
+        };
+        let start = Instant::now();
+        let (_tx, h) = spawn_broker_with(transport, |_| {}, limits);
+        h.join().unwrap();
+        assert!(start.elapsed() >= Duration::from_millis(50));
+    }
+
+    #[test]
+    fn broker_read_error_counter_resets_on_packet() {
+        let mut state = vec![0u8; vial_qsid::PACKET_LEN];
+        state[0] = 0xAB;
+        let mut reads: Vec<Result<Vec<u8>>> = Vec::new();
+        for _ in 0..2 {
+            reads.push(Err(anyhow!("glitch")));
+            reads.push(Err(anyhow!("glitch")));
+            reads.push(Ok(state.clone()));
+        }
+        let transport = MockTransport::new(reads);
+        let limits = BrokerLimits {
+            max_consecutive_errors: 3,
+            idle_timeout: Duration::from_millis(1500),
+        };
+        let seen = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let counter = seen.clone();
+        let (_tx, h) = spawn_broker_with(
+            transport,
+            move |_| {
+                counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            },
+            limits,
+        );
+        h.join().unwrap(); // ends via idle timeout, not the error limit
+        assert_eq!(seen.load(std::sync::atomic::Ordering::SeqCst), 2);
     }
 }
