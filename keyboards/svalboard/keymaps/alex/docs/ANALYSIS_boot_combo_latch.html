@@ -1,0 +1,384 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>lightly — boots with hyper latched (l1c+l2c / r1c+r2c)</title>
+<style>
+  :root{--bg:#0f1115;--panel:#171a21;--line:#2a3140;--ink:#e8ecf3;--dim:#98a3b5;--faint:#6b7688;
+        --bad:#ff6b6b;--good:#4ade80;--warn:#fbbf24;--info:#60a5fa;--accent:#c084fc;--mono:ui-monospace,SFMono-Regular,Menlo,monospace}
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;padding:0 0 80px;background:var(--bg);color:var(--ink);
+       font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+  .wrap{max-width:1120px;margin:0 auto;padding:0 22px}
+  nav{position:sticky;top:0;z-index:9;background:#0f1115ee;backdrop-filter:blur(8px);
+      border-bottom:1px solid var(--line);padding:9px 0;margin-bottom:24px}
+  nav .wrap{display:flex;gap:6px;flex-wrap:wrap}
+  nav a{color:var(--dim);text-decoration:none;font:600 11px/1 var(--mono);text-transform:uppercase;
+        letter-spacing:.07em;padding:6px 10px;border-radius:20px;border:1px solid transparent}
+  nav a:hover{color:var(--ink);border-color:var(--line);background:var(--panel)}
+  h1{font-size:23px;margin:0 0 4px;letter-spacing:-.2px}
+  h2{font-size:12px;text-transform:uppercase;letter-spacing:.12em;color:var(--accent);margin:0 0 12px}
+  h3{font-size:13px;margin:18px 0 8px;color:var(--dim)}
+  .sub{color:var(--dim);margin:0 0 22px;font-size:13.5px}
+  section{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:20px;margin-bottom:16px;scroll-margin-top:64px}
+  code,.mono{font-family:var(--mono);font-size:12.5px}
+  a{color:var(--info);text-decoration:none;border-bottom:1px dotted #2f4a6d}
+  a:hover{border-bottom-style:solid}
+  table{border-collapse:collapse;width:100%;font-family:var(--mono);font-size:12px;margin:6px 0}
+  th{text-align:left;color:var(--faint);font-weight:600;font-size:10.5px;text-transform:uppercase;
+     letter-spacing:.07em;padding:0 8px 6px;border-bottom:1px solid var(--line)}
+  td{padding:5px 8px;border-bottom:1px solid #212733;vertical-align:top}
+  tr:last-child td{border-bottom:0}
+  .k{color:var(--accent)}.c{color:#5f6b7d}.g{color:var(--good)}.r{color:var(--bad)}.y{color:var(--warn)}.b{color:var(--info)}
+  pre{margin:0;padding:12px;background:#0b0d11;border:1px solid var(--line);border-radius:8px;
+      overflow-x:auto;font-family:var(--mono);font-size:11.5px;line-height:1.6;color:#cdd6e4}
+  .tag{display:inline-block;padding:1px 8px;border-radius:20px;font:600 10.5px/1.7 var(--mono);white-space:nowrap}
+  .t-bad{background:#3a1d1d;color:var(--bad)}.t-good{background:#17323f;color:var(--info)}
+  .t-warn{background:#3a2f14;color:var(--warn)}.t-dim{background:#22282f;color:var(--dim)}
+  .t-ok{background:#173a24;color:var(--good)}
+  .cmd{background:#0b0d11;border:1px solid var(--line);border-radius:5px;padding:1px 6px;
+       font-family:var(--mono);font-size:11.5px;color:var(--info);white-space:nowrap}
+  details{border:1px solid var(--line);border-radius:9px;padding:0;margin:9px 0;background:#141821}
+  details[open]{padding-bottom:12px}
+  summary{cursor:pointer;padding:10px 13px;font:600 12.5px/1.4 var(--mono);color:var(--dim);list-style:none}
+  summary:before{content:"▸ ";color:var(--accent)}
+  details[open] summary:before{content:"▾ "}
+  details[open] summary{border-bottom:1px solid var(--line);margin-bottom:12px;color:var(--ink)}
+  details>pre,details>p,details>table,details>ul,details>h3{margin-left:13px;margin-right:13px}
+  details>p,details>table,details>ul{font-size:13px}
+  .note{color:var(--dim);font-size:12.5px}.note b{color:var(--ink)}
+  .callout{border-left:3px solid var(--accent);background:#1a1d26;padding:11px 14px;border-radius:0 8px 8px 0;margin:12px 0}
+  .callout.warn{border-left-color:var(--warn)}
+  .chain{display:grid;gap:0;margin:4px 0 10px}
+  .node{border:1px solid var(--line);border-radius:9px;padding:10px 13px;background:#141821;
+        font-family:var(--mono);font-size:12px;display:flex;justify-content:space-between;gap:14px;align-items:center}
+  .node.bad{border-color:#4a2626;background:#1b1418}
+  .node.hot{border-color:#3c3218;background:#1b1810}
+  .arrow{height:20px;display:flex;align-items:center;gap:10px;padding-left:22px;color:var(--faint);
+         font:600 10.5px/1 var(--mono);text-transform:uppercase;letter-spacing:.06em}
+  .arrow:before{content:"↓";color:var(--accent);font-size:13px}
+  .pads{display:inline-grid;grid-template-columns:repeat(5,26px);grid-auto-rows:19px;gap:2px;vertical-align:top}
+  .pads i{display:grid;place-items:center;font:600 8px/1 var(--mono);font-style:normal;border-radius:3px;
+          background:#22282f;color:var(--faint)}
+  .pads i.hit{background:#3a1d1d;color:var(--bad);border:1px solid #5c2f2f}
+  .pads i.nope{background:transparent;border:1px dashed #22282f}
+  .prow{display:inline-grid;grid-template-columns:52px auto;gap:10px;align-items:center;margin-bottom:3px}
+  .plab{font:600 9.5px/19px var(--mono);color:var(--faint);text-align:right}
+  .hand{display:inline-block;vertical-align:top;margin-right:26px}
+  .hand h4{margin:0 0 6px;font:600 10px/1 var(--mono);color:var(--faint);text-transform:uppercase;letter-spacing:.08em}
+  ol,ul{margin:0;padding-left:20px}li{margin-bottom:7px}
+  .legend{font:600 10.5px/1.9 var(--mono);color:var(--faint)}
+  .grid2{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(360px,1fr))}
+</style>
+</head>
+<body>
+<nav><div class="wrap">
+  <a href="#chain">L0 · chain</a>
+  <a href="#why">L1 · why these 4</a>
+  <a href="#links">L2 · the links</a>
+  <a href="#evidence">L3 · evidence</a>
+  <a href="#fixes">fixes</a>
+  <a href="#userland">userland only</a>
+  <a href="#prove">prove it</a>
+</div></nav>
+
+<div class="wrap">
+<h1>Boots as if <span class="k">l1c+l2c</span> and <span class="k">r1c+r2c</span> are held</h1>
+<p class="sub">Svalboard Lightly · <span class="mono">vial:f64c2b3c</span> · fw <span class="mono">v25.02.12-1500-gdda225</span> ·
+hyper latches at power-on, and only press-and-releasing both pairs clears it.</p>
+
+<!-- ══════════════════════════════════════ L0 ══════════════════════════════════════ -->
+<section id="chain">
+<h2>L0 · the whole thing in one screen</h2>
+<div class="chain">
+  <div class="node"><span>fingers resting on pads when power arrives</span><span class="tag t-warn">trigger</span></div>
+  <div class="arrow">L1 · pads are level-sensed, fixed polarity, no boot baseline</div>
+  <div class="node"><span>matrix reports <b>l1c l2c r1c r2c</b> pressed ~5 ms after boot</span><span class="tag t-good">verified · debounce 5 ms</span></div>
+  <div class="arrow">L2 · they land in one scan → simultaneous, combo_term irrelevant</div>
+  <div class="node"><span>combos <b>#7</b> (l1c+l2c) and <b>#8</b> (r1c+r2c) fire, both hands</span><span class="tag t-good">verified · live combo table</span></div>
+  <div class="arrow">L3 · both outputs are mod-taps → injected at fake keypos (0,0) → settles as HOLD</div>
+  <div class="node bad"><span>Ctrl+Shift+Alt+Gui registered — one latched combo per hand</span><span class="tag t-good">verified · live keymap</span></div>
+  <div class="arrow">L4 · a combo can only be released through its input keys' release path</div>
+  <div class="node bad"><span>no release events → nothing heals it → press+release the pair does</span><span class="tag t-warn">1 link inferred</span></div>
+</div>
+<div class="callout">
+<b>You do not need to touch core firmware.</b> A ~15-line <span class="mono">keymap.c</span> boot-grace plus two
+Vial combo-output edits removes both the trigger and the latch — see <a href="#userland">userland only</a>.
+The <span class="mono">matrix.c</span> change is the only thing that makes the phantom pads themselves go away.
+</div>
+</section>
+
+<!-- ══════════════════════════════════════ L1 ══════════════════════════════════════ -->
+<section id="why">
+<h2>L1 · why exactly these four pads</h2>
+<p class="note">All four are the <b>centre column (col 2)</b> of the two inner finger rows — the pads your index and
+middle fingers live on. They are also the only pair per hand whose combo <b>output is a hold</b>.</p>
+
+<div class="grid2">
+<div>
+<div class="hand"><h4>left hand · rows 1→4, cols c n e s w</h4>
+  <div class="prow"><span class="plab">r1 · index</span><span class="pads"><i class="hit">l1c</i><i>l1n</i><i>l1e</i><i>l1s</i><i>l1w</i></span></div>
+  <div class="prow"><span class="plab">r2 · middle</span><span class="pads"><i class="hit">l2c</i><i>l2n</i><i>l2e</i><i>l2s</i><i>l2w</i></span></div>
+  <div class="prow"><span class="plab">r3 · ring</span><span class="pads"><i>l3c</i><i>l3n</i><i>l3e</i><i>l3s</i><i>l3w</i></span></div>
+  <div class="prow"><span class="plab">r4 · pinky</span><span class="pads"><i>l4c</i><i>l4n</i><i>l4e</i><i>l4s</i><i>l4w</i></span></div>
+</div>
+<div class="hand"><h4>right hand</h4>
+  <div class="prow"><span class="plab">r1 · index</span><span class="pads"><i class="hit">r1c</i><i>r1n</i><i>r1e</i><i>r1s</i><i>r1w</i></span></div>
+  <div class="prow"><span class="plab">r2 · middle</span><span class="pads"><i class="hit">r2c</i><i>r2n</i><i>r2e</i><i>r2s</i><i>r2w</i></span></div>
+  <div class="prow"><span class="plab">r3 · ring</span><span class="pads"><i>r3c</i><i>r3n</i><i>r3e</i><i>r3s</i><i>r3w</i></span></div>
+  <div class="prow"><span class="plab">r4 · pinky</span><span class="pads"><i>r4c</i><i>r4n</i><i>r4e</i><i>r4s</i><i>r4w</i></span></div>
+</div>
+<p class="legend"><span class="r">■</span> boots held + combo output is a HOLD → latches &nbsp;
+                   <span style="color:#22282f">■</span> other pads</p>
+</div>
+
+<div>
+<h3>Every combo that resting fingers can complete</h3>
+<table>
+<tr><th>#</th><th>inputs</th><th>output</th><th>behaviour</th></tr>
+<tr><td>7</td><td>l1c + l2c</td><td class="k">MT(CSAG|BSLS)</td><td class="r">hold → hyper latches</td></tr>
+<tr><td>8</td><td>r1c + r2c</td><td class="k">MT(CSAG|MS_BTN1)</td><td class="r">hold → hyper latches</td></tr>
+<tr><td>20</td><td>r1c + r2c + r3c</td><td class="k">KC_MS_BTN1</td><td class="r">hold → stuck click</td></tr>
+<tr><td>21</td><td>r1c…r4c</td><td class="k">KC_MS_BTN2</td><td class="r">hold → stuck click</td></tr>
+<tr><td>3</td><td>l3c + l2c</td><td>CS(-)</td><td class="g">tap → self-clears</td></tr>
+<tr><td>4</td><td>r3c + r2c</td><td>CS(-)</td><td class="g">tap → self-clears</td></tr>
+<tr><td>12 / 13</td><td>l4c+l3c / r4c+r3c</td><td>SC_LSPO / SC_RSPC</td><td class="g">tap → self-clears</td></tr>
+<tr><td>19</td><td>l2c + r2c</td><td>KC_TRNS (no-op)</td><td class="g">nothing</td></tr>
+</table>
+<p class="note">You only ever see <b>#7/#8</b> because taps are invisible. <b>#20/#21</b> are the same bug
+wearing a mouse button — if a stuck left-click ever shows up, it's this one.</p>
+</div>
+</div>
+</section>
+
+<!-- ══════════════════════════════════════ L2 ══════════════════════════════════════ -->
+<section id="links">
+<h2>L2 · the four links, opened on demand</h2>
+
+<details open>
+<summary>L1 · the pad matrix has no boot baseline — <a href="../../../../../matrix.c" style="border:0">keyboards/svalboard/matrix.c</a></summary>
+<p>Pads are plain digital reads with a per-column polarity fixed at compile time
+(<a href="../../../../../config.h">config.h:50</a>): <code>MATRIX_COL_PUSHED_STATES { 0, 0, 1, 0, 0, 0 }</code> — note col 2 is inverted.</p>
+<pre>matrix.c:168  // "The first scan comes out backwards for reasons we don't understand.
+              //  Skipping it, stops the lockup experienced with thumbs out on board boot."
+              if (first_scan) { memset(raw_matrix, 0, sizeof(raw_matrix)); ... }
+
+matrix.c:103  // DD (push-through) pad: sample its boot state, XOR it out forever after
+              scans_before_dd_detect = 3;  ...  dd_detected = pin_state;  pin_state ^= dd_detected;</pre>
+<p>Two workarounds already exist for pads that are in the wrong state at power-on — the maintainers
+know. But <code>first_scan</code> discards <b>one</b> scan, and the DD trick covers <b>one</b> pad.
+Default debounce is <code>sym_defer_g</code> @ <code>DEBOUNCE 5</code>, so anything still read as
+touched 5 ms after boot becomes a genuine press event.</p>
+</details>
+
+<details>
+<summary>L2 · resting pads complete a combo instead of a keystroke</summary>
+<pre>$ just svalboard flow-status   →   combo_term 60 · tapping_term 220 · flow_tap 100 · permissive_hold 1 · chordal_hold 0</pre>
+<p>Every rested pad flips in the <b>same matrix scan</b>, so QMK receives them as one burst —
+<code>combo_term</code> never comes into play, they are simply simultaneous. Per hand, the first two
+centre pads complete <b>#7</b>/<b>#8</b> immediately.</p>
+</details>
+
+<details>
+<summary>L3 · combo outputs are injected as a fake key at (0,0)</summary>
+<pre>/* quantum/process_keycode/process_combo.c:365-372 */
+record-&gt;keycode    = combo-&gt;keycode;
+record-&gt;event.type = COMBO_EVENT;
+record-&gt;event.key  = MAKE_KEYPOS(0, 0);   /* ← not a real key: it is your left thumb (ltlo = LT(6,TAB)) */</pre>
+<ul>
+<li>the synthetic press is indistinguishable by keypos from the real <b>ltlo</b> thumb key <i>and</i> from
+    every other combo's output — both hands' outputs collide in one tapping slot;</li>
+<li><code>tapping_term 220 ms</code> with nothing releasing it ⇒ the mod-tap settles as a <b>hold</b> ⇒ <code>add_mods(0x1F)</code>;</li>
+<li>QMK's own suite only covers the polite case — <code>tests/combo/test_combo.cpp::combo_modtest_held_longer_than_tapping_term</code>:
+    one combo, pressed <i>after</i> init, released normally.</li>
+</ul>
+</details>
+
+<details>
+<summary>L4 · a combo can only be released by its own input keys</summary>
+<pre>/* quantum/process_keycode/process_combo.c:540-570 — the ONLY caller of release_combo() */
+} else if (COMBO_ACTIVE(combo) &amp;&amp; ONLY_ONE_KEY_IS_DOWN(...) &amp;&amp; KEY_NOT_YET_RELEASED(...)) {
+    /* last key released */
+    release_combo(combo_index, combo);</pre>
+<p>No release event for the chord keys ⇒ <code>combo-&gt;active</code> stays set ⇒ the output's release is
+never generated. <code>clear_combos()</code> deliberately skips active combos, so nothing else heals it.
+That is the entire "must trigger the combos to get back to neutral" ritual — and why it is needed
+<b>once per hand</b>: two independently latched combos.</p>
+</details>
+
+<details>
+<summary>Where the inference is</summary>
+<p>Links 2, 3 and 4 are verified facts about this board (live keymap, live combo table, source).
+The inferred part is <b>why the pads stay pressed</b> after the fingers leave: most likely the pad's
+sense baseline is established with a finger on it, so the 1→0 transition the combo needs never
+happens. A press-then-release of the pair manufactures exactly that transition — which is what you
+observe. The boot trace in <a href="#prove">prove it</a> settles it.</p>
+</details>
+</section>
+
+<!-- ══════════════════════════════════════ EVIDENCE ══════════════════════════════════════ -->
+<section id="evidence">
+<h2>L3 · evidence, straight off the connected board</h2>
+<div class="grid2">
+<div>
+<table>
+<tr><th>cell</th><th>name</th><th>live layer-0 binding</th></tr>
+<tr><td>r1c2</td><td class="k">l1c</td><td>MT(CS|F)</td></tr>
+<tr><td>r2c2</td><td class="k">l2c</td><td>MT(SG|D)</td></tr>
+<tr><td>r6c2</td><td class="k">r1c</td><td>MT(CS|J)</td></tr>
+<tr><td>r7c2</td><td class="k">r2c</td><td>MT(SG|K)</td></tr>
+</table>
+<p class="note">Four tap-holds in one column ⇒ all four hold-capable, all four in the inverted-polarity column.</p>
+</div>
+<div>
+<pre>$ just svalboard layer-info
+vial protocol   : 6
+keyboard uid    : 1b187df221f62948
+flashed firmware: v25.02.12-1500-gdda225-dirty
+
+$ just svalboard state-watch 12          # board idle, nobody touching it
+1.24s INITIAL/HB  top=0  layers=[0]     mods=- weak=- osm=-
+3.69s LAYER       top=15 layers=[0 15]  mods=-          ← auto-mouse churn, not mods</pre>
+<p class="note">Idle state is clean ⇒ the latch is <b>armed at boot</b>, not drifting later.</p>
+</div>
+</div>
+<p class="note">Full snapshot: <a href="../tools/board-fingerprints/board-B-f64c2b3c-fw1500.json">board-B-f64c2b3c-fw1500.json</a>
+(layers + all 28 combos + all QSIDs). Re-derive with <span class="cmd">just svalboard layer-fingerprint now</span>.</p>
+</section>
+
+<!-- ══════════════════════════════════════ FIXES ══════════════════════════════════════ -->
+<section id="fixes">
+<h2>Fixes · what each one buys</h2>
+<table>
+<tr><th></th><th>scope</th><th>rebuild?</th><th>kills trigger</th><th>kills latch</th><th>phantom pads gone</th><th>cost</th></tr>
+<tr><td><b>A</b> non-latching combo outputs</td><td>Vial config</td><td class="g">no</td><td class="y">partly</td><td class="g">yes</td><td class="r">no</td><td>hyper becomes a one-shot</td></tr>
+<tr><td><b>B</b> boot grace window</td><td>keymap.c</td><td>yes</td><td class="g">yes</td><td class="g">yes</td><td class="r">no</td><td>first 400 ms of presses eaten</td></tr>
+<tr><td><b>C</b> panic key + watchdog</td><td>keymap.c</td><td>yes</td><td class="r">no</td><td class="g">heals</td><td class="r">no</td><td>2 s mod-hold false positive</td></tr>
+<tr><td><b>D</b> pad boot baseline</td><td>matrix.c (core)</td><td>yes</td><td class="g">yes</td><td class="g">yes</td><td class="g">yes</td><td>core change, 15 lines</td></tr>
+</table>
+<div class="callout"><b>Recommended: B + A.</b> No core code. C is a one-press escape hatch worth having anyway;
+D only if you also want the phantom pad state itself to disappear (it also fixes the auto-mouse
+boot-churn class of bug).</div>
+</section>
+
+<!-- ══════════════════════════════════════ USERLAND ══════════════════════════════════════ -->
+<section id="userland">
+<h2>Userland only — no core firmware edits</h2>
+<p class="note">Answer to "can we do this without touching core firmware?": <b>yes, almost all of it.</b>
+The keymap is compiled into the same binary, and QMK's earliest user hook runs <i>before</i> combos:
+<code>pre_process_record_quantum() → pre_process_record_kb/user() → process_combo()</code>
+(<a href="../../../../../quantum/quantum.c">quantum.c:286-289</a>). So a keymap can veto a combo press
+that the core code would otherwise act on.</p>
+
+<h3>A · Vial config only — makes the latch impossible (no rebuild, no flash of code)</h3>
+<pre>combo #7   out: MT(CSAG|BSLS)     →  OSMT(MOD_HYPR, KC_BSLS)   ← hyper applies to next key, self-clears
+combo #8   out: MT(CSAG|MS_BTN1)  →  OSM(MOD_HYPR)             ← its tap was broken anyway (see note)
+combo #20/#21 out: KC_MS_BTN1/2   →  leave, or delete; B stops them arming at boot</pre>
+<ul>
+<li>One-shot mods are cleared by QMK itself on the next key, so a boot-time firing is a non-event.</li>
+<li>Verify after editing: <span class="cmd">just svalboard layer-combos</span> — OSMT lives at
+    <span class="mono">0x6000+</span> and the decoder prints raw hex there; that's expected, not an error.</li>
+<li class="note"><b>Why #8's tap was already dead:</b> <code>MT(mod, KC_MS_BTN1)</code> puts the
+    <i>mouse-keycode</i> range value (0x00D1) into the tap slot, which is sent as a raw HID usage rather
+    than going through mousekey handling. Only the hold ever worked.</li>
+</ul>
+
+<h3>B · keymap.c boot grace — the load-bearing ~15 lines</h3>
+<pre>/* keymaps/alex/keymap.c — next to the other user hooks */
+#define BOOT_GRACE_MS 400
+static uint16_t boot_grace_t0;
+static bool     boot_grace_done;
+
+bool pre_process_record_user(uint16_t keycode, keyrecord_t *record) {
+    if (boot_grace_done) return true;
+    if (!boot_grace_t0) boot_grace_t0 = timer_read();
+    if (timer_elapsed(boot_grace_t0) &lt; BOOT_GRACE_MS) return false;  /* swallow: no combo, no tap-hold */
+    boot_grace_done = true;
+    clear_keyboard();   /* drop anything the boot burst already registered */
+    return true;
+}</pre>
+<ul>
+<li>Returning <code>false</code> here is earlier than <code>process_combo()</code>, earlier than the
+    tapping state machine, and earlier than <code>process_record_kb()</code> in <span class="mono">keymap_support.c</span>.</li>
+<li>The stray <i>release</i> that arrives when you finally lift a phantom pad is harmless: mod-tap
+    release with nothing registered = <code>del_mods()</code> no-op; combos fall into their
+    "incomplete combo" branch and pass it through.</li>
+<li>Cost: the first ~400 ms after plug-in is ignored, and a pad that was rested at boot still needs one
+    lift before its next press registers — <b>that behaviour is identical to the core fix D</b>, because
+    in both cases the pad is treated as already-released.</li>
+</ul>
+
+<h3>C · keymap.c escape hatch — one press instead of the both-hands ritual</h3>
+<pre>/* keymap.c — this fork has no QK_CLEAR_KEYBOARD, so expose clear_keyboard() yourself */
+enum { SV_PANIC_NEUTRAL = QK_KB_0 + 21 };        /* next free slot after SV_QMK_STATE_TOGGLE (0x7E14) */
+
+case SV_PANIC_NEUTRAL:
+    if (record-&gt;event.pressed) clear_keyboard();  /* quantum/action.h:124 */
+    return false;</pre>
+<pre>/* vial.json → "customKeycodes": append as the 22nd entry (index 21 → 0x7E15 = 32277) */
+{ "name": "SV_PANIC_NEUTRAL", "shortName": "Panic\nNeutral", "title": "clear_keyboard(): drops stuck mods/keys." }</pre>
+<pre>/* optional self-healing net — append inside the existing housekeeping_task_user() */
+static uint16_t last_event_ms;                     /* set in post_process_record_user(): */
+/*     last_event_ms = timer_read();                                                              */
+
+if (get_mods() &amp;&amp; last_event_ms &amp;&amp; timer_elapsed(last_event_ms) &gt; 2000) {
+    clear_keyboard();
+    last_event_ms = timer_read();                  /* fire once, not every scan */
+}</pre>
+<p class="note"><b>Caveat:</b> holding a mod with zero other key events for &gt;2 s looks identical to the bug,
+so it will be cleared. If that annoys you, keep only the panic key — or gate on
+<code>get_oneshot_mods()==0 &amp;&amp; get_mods()==MOD_HYPR</code> to target the actual signature.</p>
+
+<h3>D · only if you want the phantom pads gone (core)</h3>
+<pre>/* keyboards/svalboard/matrix.c — generalise the existing dd_detected trick to all pads */
+if (boot_baseline_open) {                       /* after the existing first_scan block */
+    if (!boot_baseline_t0) boot_baseline_t0 = timer_read();
+    if (timer_elapsed(boot_baseline_t0) &lt; 250) {
+        for (uint8_t r = 0; r &lt; ROWS_PER_HAND; r++) boot_baseline[r] |= curr_matrix[r];
+        memset(raw_matrix, 0, sizeof(raw_matrix)); return true;
+    }
+    boot_baseline_open = false;
+}
+for (uint8_t r = 0; r &lt; ROWS_PER_HAND; r++) {
+    boot_baseline[r] &amp;= curr_matrix[r];     /* pad seen released → drop its mask */
+    curr_matrix[r]  &amp;= ~boot_baseline[r];   /* pad still held from boot → invisible */
+}</pre>
+<p class="note">Why B can't do this part: userland can veto <b>events</b>, not the cooked <b>matrix state</b>.
+Anything that reads the matrix directly — <span class="mono">keymap_support.c</span>'s
+<code>mouse_keys_pressed</code> bookkeeping, <code>debug_matrix</code>, auto-mouse — still sees phantom pads.
+That's the residual, and it is also why the auto-mouse layer churns at boot.</p>
+</section>
+
+<!-- ══════════════════════════════════════ PROVE ══════════════════════════════════════ -->
+<section id="prove">
+<h2>Prove it on the physical board</h2>
+<pre>$ cd keyboards/svalboard/keymaps/alex/tools
+$ just boot-watch 25        # pauses qmk-state-daemon, prompts you, streams 0xAB state, resumes the daemon
+&gt;&gt;&gt; double-tap RESET (or unplug/replug) with your fingers ON the home pads
+    t       reason          top dflt layers          mods / weak / osm</pre>
+<table>
+<tr><th>what the trace shows</th><th>verdict</th><th>apply</th></tr>
+<tr><td>mods → <span class="r">LCTL+LSFT+LALT+LGUI</span> within ~250 ms of boot, no keypress, and survives lifting fingers</td><td>chain confirmed end-to-end</td><td class="g">B + A (+C)</td></tr>
+<tr><td>mods latch, but clearing happens the moment you lift</td><td>link 1 only, no latch</td><td class="g">B alone</td></tr>
+<tr><td>mods never appear, but layers light up / clicks fire</td><td>other combo outputs arming</td><td class="g">A + delete #20/#21</td></tr>
+<tr><td><span class="mono">layers=[0 15]</span> at boot with no mouse movement</td><td>auto-mouse also fires off boot noise</td><td class="y">needs D, or <span class="cmd">SV_TOGGLE_AUTOMOUSE</span> off during boot</td></tr>
+</table>
+<h3>Free falsification test</h3>
+<p class="note">The bug should <b>also</b> appear on silent re-boots while your hands are on the board:
+<code>OS_DETECTION_KEYBOARD_RESET</code> (config.h:107) and <code>SPLIT_WATCHDOG_ENABLE</code> (:84) reset the
+MCU without touching a cable — KVM switch, host sleep/wake, OS switch. If it genuinely never appears
+except at plug-in, link 1 goes back on the table.</p>
+
+<h3>Related</h3>
+<ul>
+<li><a href="./TOUR_double_hold.md">TOUR_double_hold.md</a> — same "a hold must be released or it latches" shape, per key.</li>
+<li><a href="./ANALYSIS_double_hold_vs_flow_tap.md">ANALYSIS_double_hold_vs_flow_tap.md</a> — tap-vs-hold resolution for these cells.</li>
+<li><a href="./qmk_hold_features_primer.html">qmk_hold_features_primer.html</a> · <a href="./flow_tap_vs_chordal_hold.html">flow_tap_vs_chordal_hold.html</a></li>
+<li><a href="../tools/sval-state.py">tools/sval-state.py</a> — the 0xAB state sniffer behind <span class="cmd">boot-watch</span>.</li>
+</ul>
+</section>
+</div>
+</body>
+</html>
