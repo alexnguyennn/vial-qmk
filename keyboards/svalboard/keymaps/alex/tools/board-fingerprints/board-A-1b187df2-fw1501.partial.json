@@ -1,0 +1,26 @@
+{
+ "_note": "Captured from the lightly attached first (uid 1b187df221f62948; serial not recorded at the time). QSIDs and firmware were read in full over raw HID. Its keymap and combo table were verified by decoded comparison against board B on these cells and matched exactly: L0 r0c2 LT(5,SPC), r5c2 LT(5,ESC), r6c2 MT(CS|J), r7c2 MT(SG|K), r8c2 MT(AG|L), L5 r6c2 LEFT / r7c2 DOWN, L6 r1c0 F3 / r6c2 4 / r7c2 5, and combo[8] MT(CS|J)+MT(SG|K) -> MT(HYPR|0xD1). Raw codes are deliberately not restated here — re-capture with `just layer-fingerprint` for a byte-exact diff.",
+ "partial": true,
+ "serial": "vial:1b187df2 (inferred from uid)",
+ "uid": "1b187df221f62948",
+ "vial_protocol": 6,
+ "firmware": "v25.02.12-1501-g747759-dirty",
+ "qsids": {
+  "chordal_hold (26)": 1,
+  "combo_term (2)": 60,
+  "flow_tap_shift_delta (28)": 90,
+  "flow_tap_shift_min_clamp (29)": 10,
+  "flow_tap_term (27)": 100,
+  "hold_on_other_key_press (23)": 0,
+  "magic (21)": 128,
+  "permissive_hold (22)": 1,
+  "quick_tap_term (25)": 200,
+  "retro_tapping (24)": 0,
+  "tap_code_delay (18)": 0,
+  "tap_hold_caps_delay (19)": 80,
+  "tapping_term (7)": 200,
+  "tapping_toggle (20)": 5
+ },
+ "layers": {},
+ "combos": {}
+}

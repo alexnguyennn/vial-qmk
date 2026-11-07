@@ -220,6 +220,18 @@ arming window becomes strictly harder to hit accidentally. Same applies to
 Chordal Hold: same-hand nested presses get force-tapped, so their releases
 never register as `last_hold_time` for double-hold purposes.
 
+> **Correction (2026-11-07, while investigating the `r1c+r2c` hypr chord).**
+> The Chordal Hold sentence above is too broad. Chordal hold does *not*
+> force-tap at press time when the other key is itself a tap-hold: the
+> press-time branch at `action_tapping.c:424` is guarded by
+> `if (!is_tap_record(keyp))`, and `is_tap_action()` returns true for MT and LT
+> (`action.c:1162`). The force-tap only happens at *release* time
+> (`:316`, and only inside `TAPPING_TERM`). So a same-hand **mod-tap + mod-tap**
+> pair that is *held* past the tapping term still resolves as two holds, and
+> still registers for double-hold purposes. Only a same-hand **tap-hold + plain
+> key** roll — the typing case — is force-tapped at press time. See
+> `flow_tap_vs_chordal_hold.html` for the full trace.
+
 Net: the four features (double-hold, Flow Tap, Chordal Hold, Permissive Hold)
 compose cleanly. Double-hold rides on top of everything else and only kicks in
 for *deliberate* holds.

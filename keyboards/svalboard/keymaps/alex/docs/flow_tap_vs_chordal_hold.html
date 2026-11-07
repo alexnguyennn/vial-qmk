@@ -1,0 +1,619 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>lightly — hypr chord not firing: findings</title>
+<style>
+  :root{--bg:#0f1115;--panel:#171a21;--line:#2a3140;--ink:#e8ecf3;--dim:#98a3b5;--faint:#6b7688;
+        --bad:#ff6b6b;--good:#4ade80;--warn:#fbbf24;--info:#60a5fa;--accent:#c084fc;--mono:ui-monospace,SFMono-Regular,Menlo,monospace}
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;padding:0 0 80px;background:var(--bg);color:var(--ink);
+       font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+  .wrap{max-width:1180px;margin:0 auto;padding:0 22px}
+  nav{position:sticky;top:0;z-index:9;background:#0f1115ee;backdrop-filter:blur(8px);
+      border-bottom:1px solid var(--line);padding:9px 0;margin-bottom:26px}
+  nav .wrap{display:flex;gap:6px;flex-wrap:wrap}
+  nav a{color:var(--dim);text-decoration:none;font:600 11px/1 var(--mono);text-transform:uppercase;
+        letter-spacing:.07em;padding:6px 10px;border-radius:20px;border:1px solid transparent}
+  nav a:hover{color:var(--ink);border-color:var(--line);background:var(--panel)}
+  h1{font-size:24px;margin:0 0 4px;letter-spacing:-.2px}
+  h2{font-size:12px;text-transform:uppercase;letter-spacing:.12em;color:var(--accent);margin:0 0 12px}
+  h3{font-size:13px;margin:20px 0 8px;color:var(--dim)}
+  .sub{color:var(--dim);margin:0 0 26px;font-size:13.5px}
+  section{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:20px;margin-bottom:16px;scroll-margin-top:64px}
+  code,.mono{font-family:var(--mono);font-size:12.5px}
+  a.intra{color:var(--info);text-decoration:none;border-bottom:1px dotted #2f4a6d}
+  a.intra:hover{border-bottom-style:solid}
+  table{border-collapse:collapse;width:100%;font-family:var(--mono);font-size:12px;margin:6px 0}
+  th{text-align:left;color:var(--faint);font-weight:600;font-size:10.5px;text-transform:uppercase;
+     letter-spacing:.07em;padding:0 8px 6px;border-bottom:1px solid var(--line)}
+  td{padding:5px 8px;border-bottom:1px solid #212733}
+  tr:last-child td{border-bottom:0}
+  .k{color:var(--accent)}.c{color:#5f6b7d}.g{color:var(--good)}.r{color:var(--bad)}.y{color:var(--warn)}
+  pre{margin:0;padding:12px;background:#0b0d11;border:1px solid var(--line);border-radius:8px;
+      overflow-x:auto;font-family:var(--mono);font-size:11.5px;line-height:1.6;color:#cdd6e4}
+  .tag{display:inline-block;padding:1px 8px;border-radius:20px;font:600 10.5px/1.7 var(--mono)}
+  .t-bad{background:#3a1d1d;color:var(--bad)}.t-good{background:#173a24;color:var(--good)}
+  .t-warn{background:#3a2f14;color:var(--warn)}.t-dim{background:#22282f;color:var(--dim)}
+  .cmd{background:#0b0d11;border:1px solid var(--line);border-radius:5px;padding:1px 6px;
+       font-family:var(--mono);font-size:11.5px;color:var(--info);white-space:nowrap}
+  details{border:1px solid var(--line);border-radius:9px;padding:0;margin:9px 0;background:#141821}
+  details[open]{padding-bottom:12px}
+  summary{cursor:pointer;padding:10px 13px;font:600 12.5px/1.4 var(--mono);color:var(--dim);list-style:none}
+  summary:before{content:"▸ ";color:var(--accent)}
+  details[open] summary:before{content:"▾ "}
+  details[open] summary{border-bottom:1px solid var(--line);margin-bottom:12px;color:var(--ink)}
+  details>pre,details>p,details>table{margin-left:13px;margin-right:13px}
+  details>p,details>table{font-size:13px}
+  .lead{display:grid;gap:10px;grid-template-columns:auto 1fr;align-items:start;margin-bottom:10px}
+  .n{width:22px;height:22px;border-radius:50%;background:#22282f;color:var(--dim);display:grid;
+     place-items:center;font:700 11px/1 var(--mono);margin-top:2px}
+  .n.bad{background:#3a1d1d;color:var(--bad)}.n.good{background:#173a24;color:var(--good)}
+  .lanes{font-family:var(--mono);font-size:12px}
+  .lane{display:grid;grid-template-columns:120px 1fr;gap:10px;align-items:center;margin-bottom:6px}
+  .track{position:relative;height:21px;background:#0b0d11;border:1px solid var(--line);border-radius:5px}
+  .bar{position:absolute;top:3px;height:13px;border-radius:3px;display:flex;align-items:center;
+       padding:0 6px;font-size:9.5px;color:#0b0d11;font-weight:700;overflow:hidden}
+  .b-hold{background:var(--good)}.b-tap{background:var(--bad)}.b-wait{background:#48546b;color:#e8ecf3}
+  .scale{display:grid;grid-template-columns:120px 1fr;gap:10px;color:var(--faint);font-size:10px}
+  .scale>div:last-child{display:flex;justify-content:space-between}
+  .note{color:var(--dim);font-size:12.5px}.note b{color:var(--ink)}
+  .grid2{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(400px,1fr))}
+  ol,ul{margin:0;padding-left:20px}li{margin-bottom:8px}
+</style>
+</head>
+<body>
+
+<nav><div class="wrap">
+  <a href="#answer">Answer</a><a href="#ab">Board A vs B</a><a href="#layers">Layers 5 vs 6</a>
+  <a href="#gesture">The gesture</a>
+  <a href="#mechanics">Mechanics</a><a href="#combo">Combo</a><a href="#dials">Dials</a>
+  <a href="#fixes">Fixes</a><a href="#commands">Commands</a><a href="#method">Method</a>
+  <a href="qmk_hold_features_primer.html" style="color:var(--accent);border-color:#3a2f52">Hold-features primer →</a>
+</div></nav>
+
+<div class="wrap">
+<h1>lightly — hypr chord not firing</h1>
+<p class="sub">Two boards, same UID, same keymap, same combos. One does it, one doesn't.
+Updated after probing the second board over raw HID · <span class="mono">svalboard/alex</span></p>
+
+<!-- ============================================================ ANSWER -->
+<section id="answer">
+<h2>Answer</h2>
+<div class="lead"><div class="n bad">1</div><div>
+<b>Board A has <span class="mono">chordal_hold</span> on (QSID 26 = 1). Board B has it off (0).</b>
+That is the only behavioural difference between them — see <a class="intra" href="#ab">Board A vs B</a>.
+</div></div>
+<div class="lead"><div class="n bad">2</div><div>
+<b>Chordal hold does not make combo[8] impossible — it makes it late and fragile.</b> A tap-hold's keycode only reaches
+the combo matcher when the tap-hold <i>resolves</i>; the press itself is swallowed. Two held keys resolve
+<span class="mono">skew</span> apart, and <span class="mono">process_combo</span> <b>disables any combo whose triggers land
+more than <span class="mono">combo_term</span> (60 ms) apart</b>. Hold both past the term and it fires; release one early
+and the chordal branch at <span class="mono">action_tapping.c:316</span> force-taps the pair into
+<span class="mono">j</span> + <span class="mono">k</span> — see <a class="intra" href="#mechanics">Mechanics</a>.
+</div></div>
+<div class="lead"><div class="n bad">3</div><div>
+<b>The layer must come last, and the layer you are using is 5, not 6.</b>
+<span class="mono">rtd = LT(5,KC_ESC)</span> → <b>layer 5</b>, where <span class="mono">l1s</span> is
+<span class="mono">3</span>. Combos match keycodes resolved from the <i>active</i> layer, so once layer 5 is on,
+<span class="mono">r1c</span>/<span class="mono">r2c</span> are <span class="mono">DOWN</span>/<span class="mono">UP</span>
+and combo[8] can never match — see <a class="intra" href="#layers">Layers 5 vs 6</a>.
+</div></div>
+<div class="lead"><div class="n bad">4</div><div>
+<b>combo[8] is itself a mod-tap: <span class="mono">MT(CSAG | BTN1)</span></b> — hold gives HYPR, a quick release gives a
+<b>mouse left-click</b>. And three-key supersets exist on the same two triggers:
+<span class="mono">r1c+r2c+r3c → BTN1</span>, <span class="mono">+r4c → BTN2</span>. <span class="mono">overlaps()</span>
+drops the <i>shorter</i> combo on <b>any</b> shared trigger — so a resting finger on <span class="mono">r3c</span> silently
+turns your HYPR chord into a click. See <a class="intra" href="#combo">Combo</a>.
+</div></div>
+<div class="lead"><div class="n good">✓</div><div>
+Your <b>shift+GUI+3</b> observation is the same race, lost — and it also tells us the layer: <span class="mono">r2c</span>
+resolved as a hold on layer 0 (→ SG), <span class="mono">rtd</span> put <b>layer 5</b> on, and the next key read from
+layer 5 → <span class="mono">l1s = 3</span>. The layer half of the gesture worked; only the chord failed. The combo had
+already been <b>disabled by the skew test</b> — not by the layer.
+</div></div>
+<div class="lead"><div class="n good">✓</div><div>
+And the behaviour you flagged as missing is real: <b>hold <span class="mono">r1c + r2c</span> past
+<span class="mono">tapping_term</span> and combo[8] does fire</b>, giving you a held HYPR to stack
+<span class="mono">rtd</span> on top. Both observations are one model — the threshold you feel is
+<span class="mono">tapping_term + combo_term ≈ 260 ms</span>.
+</div></div>
+<div class="lead"><div class="n">—</div><div>
+Flow Tap is <b>not involved</b> in this gesture at all. <a class="intra" href="#mechanics">Why ↓</a>
+</div></div>
+</section>
+
+<!-- ============================================================ A vs B -->
+<section id="ab">
+<h2>Board A vs Board B — the natural experiment</h2>
+<table>
+  <tr><th></th><th>A · the one that misbehaves</th><th>B · works in normal use</th></tr>
+  <tr><td>uid</td><td class="mono">1b187df221f62948</td><td class="mono">1b187df221f62948 (same)</td></tr>
+  <tr><td>serial</td><td class="mono">not recorded</td><td class="mono">vial:f64c2b3c</td></tr>
+  <tr><td>firmware</td><td class="mono">v25.02.12-<b class="y">1501</b>-g747759-dirty</td><td class="mono">v25.02.12-<b class="y">1500</b>-gdda225-dirty</td></tr>
+  <tr><td><b>chordal_hold (26)</b></td><td><b class="r">1</b> <span class="tag t-bad">on</span></td><td><b class="g">0</b> <span class="tag t-good">off</span></td></tr>
+  <tr><td>tapping_term (7)</td><td class="mono">200</td><td class="mono">220</td></tr>
+  <tr><td>combo_term (2)</td><td class="mono">60</td><td class="mono">60</td></tr>
+  <tr><td>permissive_hold (22)</td><td class="mono">1</td><td class="mono">1</td></tr>
+  <tr><td>flow_tap_term / delta / clamp</td><td class="mono">100 / 90 / 10</td><td class="mono">100 / 90 / 10</td></tr>
+  <tr><td>quick_tap_term (25)</td><td class="mono">200</td><td class="mono">200</td></tr>
+  <tr><td>keymap L0/L5/L6, combo[8]</td><td colspan="2" class="g">identical on every cell sampled</td></tr>
+  <tr><td>flow-tap delta list</td><td class="mono">V, M, LT(5,SPC), Z, X, C, COMMA, DOT, SLASH</td><td class="mono">V, M only</td></tr>
+</table>
+<p class="note"><b>Reading it:</b> the firmware gap is one commit — <span class="mono">7477596295 expand flow tap delta
+override</span> — which only widens the flow-tap delta list. Flow tap isn't in play here, so it isn't the cause.
+<b><span class="mono">chordal_hold</span> is the variable.</b> <span class="mono">tapping_term</span> 200 vs 220 makes A
+marginally <i>more</i> permissive, so it works against the theory and still doesn't rescue it.</p>
+<details><summary>Reproduce the comparison</summary>
+<pre>cd keyboards/svalboard/keymaps/alex/tools
+just layer-fingerprint board-B-f64c2b3c-fw1500     # per keyboard, while attached
+just layer-diff  board-A-1b187df2-fw1501.partial  board-B-f64c2b3c-fw1500
+
+A  vial:1b187df2 (inferred from uid)  v25.02.12-1501-g747759-dirty
+B  vial:f64c2b3c                      v25.02.12-1500-gdda225-dirty
+!! FIRMWARE DIFFERS !!
+  DIFF  chordal_hold (26)   A=1  B=0
+  DIFF  tapping_term (7)    A=200  B=220
+   (all other QSIDs equal)</pre>
+<p class="note">A's JSON is marked <span class="mono">partial</span>: its QSIDs were read in full, but its keymap/combo cells
+were verified only on the cells listed in the file, so the differ intersects instead of reporting every cell the complete
+side has. Re-capture A while it is attached for a byte-exact diff.</p>
+</details>
+</section>
+
+<!-- ============================================================ LAYERS -->
+<section id="layers">
+<h2>Layers 5 and 6 are mirrors — and that is where the confusion lives</h2>
+<p>Both are entered from a thumb, both leave their own thumb keys <span class="mono">TRNS</span> (so the thumbs keep
+their layer-0 tap-holds and you can stack one on top of the other), and between them the number block moves hand.</p>
+<table>
+  <tr><th></th><th>layer 5 · <span class="mono">ltd</span>/<span class="mono">rtd</span></th><th>layer 6 · <span class="mono">ltlo</span>/<span class="mono">rtlo</span></th></tr>
+  <tr><td><b>left hand</b></td><td class="g"><b>numbers</b> — s/e/c/n columns</td><td><b>F1–F12</b> — same geometry</td></tr>
+  <tr><td><b>right hand</b></td><td>nav: arrows, PGUP/PGDN, HOME/END, PSCR</td><td class="g"><b>numbers</b> — s/e/c/n columns</td></tr>
+  <tr><td>row 4 (both hands)</td><td>media + brightness + <span class="mono">KB_8</span></td><td><span class="mono">S(1) S(9) S(0) `</span></td></tr>
+  <tr><td>thumb row</td><td class="mono">TRNS</td><td class="mono">TRNS</td></tr>
+  <tr><td><span class="mono">l1s</span> is…</td><td class="y"><b>3</b></td><td class="y"><b>F3</b></td></tr>
+  <tr><td><span class="mono">r1c</span> / <span class="mono">r2c</span> are…</td><td class="mono">DOWN / UP</td><td class="mono">4 / 5</td></tr>
+</table>
+<pre><span class="c">// read off the board, board B, layer 5 then layer 6 — left hand centre cluster</span>
+        s    e    c    n                    s    e    c    n
+L5 l1   <span class="g">3</span>    0    6    9            L6 l1   F3   F10  F6   F9
+   l2   <span class="g">2</span>    0    5    8               l2   F2   F11  F5   F8
+   l3   <span class="g">1</span>   KP+   4    7               l3   F1   F12  F4   F7
+<span class="c">// right hand</span>
+L5 r1  PGDN DOWN PGUP LEFT          L6 r1   <span class="g">1</span>   KP+  <span class="g">4</span>   <span class="g">7</span>
+   r2  TRNS TRNS  UP  HOME             r2   <span class="g">2</span>   KP.  <span class="g">5</span>   <span class="g">8</span>
+   r3  TRNS TRNS RIGHT END             r3   <span class="g">3</span>   <span class="g">0</span>   <span class="g">6</span>   <span class="g">9</span></pre>
+<p class="note"><b>So “hypr + 3” is a layer-5 gesture and “hypr + F3” is a layer-6 gesture.</b> They want the same chord
+but different thumbs, which is easy to cross and produces exactly the two symptoms you have described at different times.
+It also means the earlier statement in this report — <i>“thumb first → r1c/r2c read as 4 and 5”</i> — was only true of the
+layer-6 thumb; with <span class="mono">rtd</span> they read as <span class="mono">DOWN</span> and
+<span class="mono">UP</span>.</p>
+<p class="note">Both layers leave the thumbs transparent, so <span class="mono">rtd</span> held + <span class="mono">rtlo</span>
+tapped stacks layer 6 over layer 5 and the highest layer wins for the finger keys — that is how you would reach F-keys
+while nav is active.</p>
+<p class="note"><b>Capture caveat:</b> the saved fingerprint is missing <span class="mono">l4e</span> and
+<span class="mono">r1e</span> on layer 5, and <span class="mono">l4w r3w r4e r4n r4w</span> on layer 6. Those cells are
+<i>unknown</i>, not empty — worth re-reading with <span class="cmd">just layer-dump 5</span> while a board is attached
+before assuming any of them is free.</p>
+</section>
+
+<!-- ============================================================ GESTURE -->
+<section id="gesture">
+<h2>The gesture you want, and what happens instead</h2>
+<p><span class="mono">combo[8]</span> = <span class="mono">r1c + r2c → MT(CSAG | BTN1)</span>. <b>Hold</b> the resolved chord
+→ Ctrl+Alt+Shift+GUI. Then <span class="mono">rtd</span> (layer 5), then <span class="mono">l1s</span> which is
+<span class="mono">3</span> on layer 5 ⇒ <b>hypr + 3</b>. Same chord with <span class="mono">rtlo</span>/<span class="mono">ltlo</span>
+(layer 6) gives <b>hypr + F3</b>.</p>
+
+<p><b>What actually happens — the combo fires ~260 ms in, if you keep holding and your fingers landed close:</b></p>
+<div class="lanes">
+  <div class="lane"><span>r1c MT(CS|J)</span><div class="track">
+    <div class="bar b-wait" style="left:1%;width:62%">press swallowed — combo matcher sees nothing</div><div class="bar b-hold" style="left:63%;width:36%">HOLD at its term</div></div></div>
+  <div class="lane"><span>r2c MT(SG|K)</span><div class="track">
+    <div class="bar b-wait" style="left:9%;width:58%">swallowed</div><div class="bar b-hold" style="left:67%;width:32%">HOLD at its term</div></div></div>
+  <div class="lane"><span>combo[8]</span><div class="track">
+    <div class="bar b-wait" style="left:63%;width:12%">both land</div><div class="bar b-hold" style="left:75%;width:24%">fires → HYPR</div></div></div>
+  <div class="lane"><span>then rtd, l1s</span><div class="track">
+    <div class="bar b-hold" style="left:75%;width:24%">layer 5 + 3, thumb is exempt</div></div></div>
+  <div class="scale"><div>0–300 ms</div><div><span>0</span><span>75</span><span>150</span><span>225</span><span>300</span></div></div>
+</div>
+
+<p class="note" style="margin-top:16px"><b>The same gesture, released inside the term — the surprising one:</b></p>
+<div class="lanes">
+  <div class="lane"><span>r1c MT(CS|J)</span><div class="track">
+    <div class="bar b-wait" style="left:1%;width:28%">pending</div><div class="bar b-tap" style="left:29%;width:44%">:316 chordal wins → j</div></div></div>
+  <div class="lane"><span>r2c MT(SG|K)</span><div class="track">
+    <div class="bar b-wait" style="left:9%;width:26%">pending</div><div class="bar b-tap" style="left:35%;width:38%">→ k</div></div></div>
+  <div class="lane"><span>combo[8]</span><div class="track">
+    <div class="bar b-tap" style="left:29%;width:60%;opacity:.6">triggers never both arrive as holds → dead</div></div></div>
+  <div class="scale"><div>0–200 ms</div><div><span>0</span><span>50</span><span>100</span><span>150</span><span>200</span></div></div>
+</div>
+
+<h3>The order that works — and the threshold you are feeling</h3>
+<pre><span class="g">1.</span> r1c + r2c squeezed together, <span class="g">keep holding</span>   layer 0 still active → combo[8] → HYPR
+<span class="g">2.</span> rtd ↓                                    layer 5 on  (thumb is chordal-exempt, and TRNS on L5)
+<span class="g">3.</span> l1s ↓                                    3 on layer 5 → <span class="g">HYPR + 3</span>
+<span class="g">4.</span> release all
+
+<span class="r">thumb first → layer 5 already on → r1c/r2c read as DOWN and UP → combo[8] cannot match, at any speed</span>
+<span class="r">and if you release the chord as soon as it fires → BTN1, a mouse left-click, instead of HYPR</span></pre>
+<p class="note">Two independent requirements, which is why it feels unreliable: <b>land the two fingers within
+<span class="mono">combo_term</span> of each other</b> (a chord, not a roll) <b>and keep both down past
+<span class="mono">tapping_term</span></b> (so each resolves as a hold rather than a tap). Releasing either trigger early
+hands the pair to the chordal branch at <span class="mono">:316</span>. Raising
+<span class="mono">combo_term</span> widens the first of those two windows — it is the dial with the most direct effect
+on this gesture, see <a class="intra" href="#fixes">Fixes</a>.</p>
+</section>
+
+<!-- ============================================================ MECHANICS -->
+<section id="mechanics">
+<h2>Mechanics — summary, then drill down</h2>
+<pre>press a tap-hold
+  ├─ <span class="k">Flow Tap</span>      <span class="c">guards TIME</span>   "pressed right after I typed?"      → instant tap
+  ├─ <span class="k">Chordal Hold</span>  <span class="c">guards SPACE</span>  "same-hand roll?"                   → tap, at release
+  ├─ <span class="k">Permissive Hold</span> <span class="c">the fallback</span>  "another key typed while held?"     → <span class="g">hold</span>
+  └─ <span class="k">COMBO TERM</span>     <span class="c">guards ARRIVAL</span> "did both triggers land in 60 ms?"   → <span class="r">disable combo</span>
+
+<span class="y">order is the whole story:</span> chordal is evaluated <b>before</b> permissive, so a chordal "false"
+pre-empts the answer that would have given you a hold. And because a tap-hold's keycode only exists for the
+combo matcher <b>after</b> resolution, the combo gate is measured against <b>resolution times</b>, not finger times.</pre>
+
+<details><summary>Chordal hold guard order — and why the thumb is already exempt</summary>
+<pre>get_chordal_hold(a, b)                        <span class="c">// quantum/qmk_settings.c:341</span>
+  qsid 26 == 0 ............................ return true   <span class="c">← board B lives here</span>
+  GUARD 1  a.row ∈ {0,5} || b.row ∈ {0,5} ... return true   <span class="c">thumbs (matrix rows 0 and 5)</span>
+  GUARD 2  both are mod-tap/layer-tap ....... return true   <span class="c">← proposed patch, finger↔finger only</span>
+  GUARD 3  get_chordal_hold_default() ....... other=='*' || hand != other_hand
+
+rtd + r1c   → GUARD 1 → true    <span class="g">thumb chords were never the problem</span>
+r1c + r2c   → GUARD 1 misses → GUARD 2 would catch it; today falls to GUARD 3 → 'R'=='R' → <span class="r">false</span>
+r1c + letter→ GUARD 3 → false → tap   <span class="g">typing protection, must be preserved</span></pre>
+<p class="note"><b>GUARD 2 does nothing for the thumb.</b> Its only effect is finger↔finger same-hand chords — exactly the
+failing half. Note <span class="mono">is_mt_or_lt()</span> is <span class="mono">static</span> in
+<span class="mono">action_tapping.c:69</span>, so it must be spelled
+<span class="mono">IS_QK_MOD_TAP(x) || IS_QK_LAYER_TAP(x)</span>.</p>
+</details>
+
+<details><summary>The gate that decides it: combos see <i>resolved</i> keycodes, not presses</summary>
+<pre><span class="g">1. the press is swallowed</span>
+   action_tapping.c:245   press of a tap-hold → tapping_key = *keyp; return true
+                          <span class="c">// process_record() is never called → process_combo never sees it</span>
+
+<span class="g">2. a held key resolves on its own clock</span>
+   keyboard.c:580         generate_tick_event() → action_exec(MAKE_TICK_EVENT)  <span class="c">// 1 kHz</span>
+   action_tapping.c:514   after TAPPING_TERM, tap.count == 0 → process_record(&amp;tapping_key)  <span class="c">// HOLD</span>
+   ⇒ the hold's press reaches process_combo at  <b>press_time + TAPPING_TERM</b>
+   ⇒ two keys pressed `skew` apart resolve      <b>`skew` apart</b>
+
+<span class="r">3. the combo matcher then applies its own deadline</span>
+   process_combo.c:481    if (timer &amp;&amp; timer_elapsed(timer) &gt; time) { DISABLE_COMBO(combo); }
+   process_combo.c:621    timer = timer_read();   <span class="c">// reset on every combo-key press, not STRICT</span>
+   ⇒ when the <b>second</b> trigger arrives, elapsed == <b>the press skew</b>
+   ⇒ <b>skew &gt; combo_term (60 ms) → the combo is disabled outright</b>
+
+<span class="g">4. and when it does fire, j and k are swallowed, not typed</span>
+   process_combo.c:377    earlier trigger records → TICK_EVENT   <span class="c">// discarded</span>
+   process_combo.c:366    last trigger record → rewritten to combo-&gt;keycode</pre>
+<p class="note"><b>This is the model that fits both of your observations.</b> Earliest possible fire is
+<span class="mono">tapping_term + combo_term ≈ 260 ms</span> after the first press — that is the threshold you found. Below
+it, the outcome is decided by which release branch runs; above it, by whether the two fingers landed within 60 ms.</p>
+<p class="note">One consequence worth knowing: while a combo is pending, the trigger events sit in
+<span class="mono">key_buffer</span> and nothing is emitted until the combo resolves or the buffer is dumped. So the whole
+chord feels delayed by roughly that window, and a raised <span class="mono">combo_term</span> buys the skew window with
+added lag on every combo trigger key — all of which are tap-holds on this board.</p>
+</details>
+
+<details><summary>The two choke points (and a correction about the first)</summary>
+<pre>inside `if (tapping_key.tap.count == 0)` the branches are tried in this order:
+  :282  own-key release                → first tap
+  :316  chordal  "Chord considered a tap"        <span class="r">← pre-empts</span>
+  :339  permissive "No tap. Interfered by typing" → <span class="g">hold</span>
+
+<span class="y">press-time</span> (:424)  the force-tap is guarded by `if (!is_tap_record(keyp))`, and
+                     is_tap_action() returns <span class="g">true for MT and LT</span> (action.c:1162)
+                     → <span class="g">skipped for MT+MT</span>. My earlier claim that it fired here was wrong.
+                     Its only other effect, `tap.interrupted = false`, is read only under
+                     HOLD_ON_OTHER_KEY_PRESS (action.c:516) — <span class="y">a no-op at our settings</span>.
+<span class="g">release-time</span> (:316) this is the one that bites: press r1c, press r2c, release inside
+                     TAPPING_TERM → waiting_buffer_typed() is true → force-taps the pair → j + k.</pre>
+</details>
+
+<details><summary>Outcome matrix — chordal on vs off</summary>
+<table>
+  <tr><th>your press</th><th>chordal ON (board A)</th><th>chordal OFF (board B)</th></tr>
+  <tr><td>tight chord, <b>released</b> inside term</td>
+      <td class="r">:316 → force taps → <b>j + k</b></td>
+      <td class="g">:339 → permissive holds, in one scan → skew ≈ 0 → <b>combo fires</b></td></tr>
+  <tr><td>tight chord, <b>held</b> past term</td>
+      <td class="g">both resolve as holds ≈ skew apart → <b>combo fires ≈ 260 ms</b></td>
+      <td class="g">same</td></tr>
+  <tr><td>slow roll (skew &gt; combo_term), held</td>
+      <td class="r">skew test → DISABLE_COMBO → j + k / stray mods</td>
+      <td class="r">same, unless permissive hold bursts them into one scan</td></tr>
+  <tr><td>thumb + finger (rtd + anything)</td>
+      <td class="g">GUARD 1 → exempt, unaffected</td><td class="g">unaffected</td></tr>
+</table>
+<p class="note">So chordal hold's real cost here is <b>one row</b>: it converts the <i>quick chord</i> — the one that
+should be the easiest — from a hold into a tap. Board B's permissive-hold branch rescues it because that branch emits
+the whole burst in a single matrix scan, so the two triggers land ~0 ms apart.</p>
+<p class="note">Making <span class="mono">get_chordal_hold()</span> return true for MT+MT doesn't "make it a hold" — it
+stops chordal pre-empting permissive hold, which then does its normal job.</p>
+</details>
+
+<details><summary>Why Flow Tap is irrelevant here (and what QSID 28 = 90 silently does)</summary>
+<pre>is_flow_tap_key(kc):  KC_SPC, KC_A..KC_Z, DOT, COMM, SCLN, SLSH
+   also:  if (get_mods() &amp; (MOD_MASK_CG | MOD_BIT_LALT)) return false   <span class="c">// off while Ctrl/GUI/Alt held</span>
+
+LT(5,KC_ESC) → tap keycode KC_ESC → not whitelisted → get_flow_tap_term() returns 0 → <span class="r">disabled</span>
+your r1c/r2c chord → mods are being held           → is_flow_tap_key() false      → <span class="r">disabled</span>
+
+effective_term(key) = 27                       <span class="c">key not in delta list</span>
+                    = 27 - 28  if 27 &gt; 28 + 29  <span class="c">key in list</span>
+                    = 29       otherwise        <span class="y">100 &gt; 90+10 is false → 10 ms</span></pre>
+<p class="note"><b>QSID 28 = 90 is past its useful range.</b> It pins V, M, LT(5,SPC), Z, X, C, COMMA, DOT, SLASH to a
+10 ms floor — flow tap effectively off for those keys — while every other tap-hold keeps the full 100 ms. That asymmetry
+is your only misfire guard if you leave chordal hold off, which is board B's posture. Fix it in
+<a class="intra" href="#dials">Dials</a>.</p>
+</details>
+</section>
+
+<!-- ============================================================ COMBO -->
+<section id="combo">
+<h2>Combo — the third gate, and it is layer-scoped</h2>
+<pre><span class="c">// quantum/process_keycode/process_combo.c:56</span>
+__attribute__((weak)) uint8_t combo_ref_from_layer(uint8_t layer) { return layer; }
+
+ref_layer = combo_ref_from_layer(highest_layer);
+if (ref_layer != highest_layer)                  <span class="c">// never true with the default</span>
+    keycode = keymap_key_to_keycode(ref_layer, key);
+<span class="y">⇒ the combo matches the keycode the tap machine just resolved, from the CURRENT layer</span>
+
+layer 0 active:  r1c = MT(CS|J)  r2c = MT(SG|K)  → <span class="g">combo[8] matches</span>
+layer 5 active:  r1c = DOWN      r2c = UP        → <span class="r">combo[8] cannot match, ever</span>
+layer 6 active:  r1c = 4         r2c = 5         → <span class="r">combo[8] cannot match, ever</span></pre>
+
+<div class="grid2">
+<details><summary>combo[8] and its neighbours, read off the board</summary>
+<pre>entry counts: tap_dance=50  <span class="g">combos=50</span>  key_override=30  alt_repeat=32
+
+<span class="g">combo[8]   MT(CS|J) + MT(SG|K)          → 0x2FD1 = MT(CSAG | BTN1)</span>
+              r1c      r2c                   <b>hold ⇒ HYPR · tap ⇒ mouse left-click</b>
+combo[20]  MT(CS|J) + MT(SG|K) + MT(AG|L)        → BTN1
+combo[21]  ... + MT(CG|;)                        → BTN2
+combo[4]   MT(SG|K) + MT(AG|L)          → CS(-)
+combo[9]   MT(SG|D) + MT(CS|J)          → TG(0)
+combo[19]  MT(SG|K) + MT(SG|D)          → ____   <span class="c">deliberate suppression</span></pre>
+<p class="note"><b>combo[8]'s result is a mod-tap, not a plain mod.</b> The chord firing is only half the gesture — you have
+to <i>keep holding the resolved chord</i> or you get <span class="mono">BTN1</span>, a mouse left-click, instead of HYPR.
+That is a second way this gesture can feel like it "didn't work" while the timing was actually fine.</p>
+</details>
+
+<details><summary>Gate 0 nobody thinks about: <span class="mono">overlaps()</span> steals the shorter chord</summary>
+<pre><span class="c">// process_combo.c:402 — returns the combo to DROP</span>
+combo_t *overlaps(combo_t *c1, combo_t *c2) {
+    ...  if (key1 == key2) overlaps = true;      <span class="c">// ANY single shared trigger counts</span>
+    if (idx2 &lt; idx1) return c2;                  <span class="c">// drop the one with FEWER keys</span>
+    return c1;
+}
+
+<span class="c">// and it is applied the moment a longer combo becomes fully pressed (:494)</span>
+if ((drop = overlaps(buffered_combo, combo))) DISABLE_COMBO(drop);</pre>
+<p class="note"><b>Consequence for you:</b> <span class="mono">combo[20]</span> shares <i>both</i> of
+<span class="mono">combo[8]</span>'s triggers and has one more key, so if your ring finger is resting on
+<span class="mono">r3c</span> when the chord resolves, combo[8] is disabled and you get
+<span class="mono">BTN1</span> — a mouse click — where you wanted HYPR. Add <span class="mono">r4c</span> and you get a
+right-click. Same for <span class="mono">combo[4]</span> (shares <span class="mono">r2c</span>),
+<span class="mono">combo[9]</span> and <span class="mono">combo[19]</span> (shares <span class="mono">r2c</span> with it as well),
+which overlap on a single key and therefore also drop the 2-key chord.</p>
+<p class="note">This is a <b>finger-placement</b> failure mode, not a timing one — which fits "sometimes it works, sometimes
+it doesn't, on the same keyboard" better than timing alone. It is also testable in one repro: chord
+<span class="mono">r1c+r2c</span> with the ring finger deliberately held on <span class="mono">r3c</span> and see whether you
+click instead of mod.</p>
+</details>
+
+<details><summary>Four gates stacked, and gate 4 is measured from delivery</summary>
+<pre>r1c↓  becomes tapping_key, <span class="y">not delivered downstream</span>
+r2c↓  MT+MT → press-time force-tap skipped → both <span class="y">queued</span>, invisible to process_combo
+rtd↓  row 5 → GUARD 1 → true → queued, settles nothing
+
+<span class="k">gate 0</span> OVERLAP          — is r3c/r4c also down? → combo[8] dropped, you get BTN1/BTN2
+<span class="k">gate 1</span> TAPPING_TERM 200 ms — nothing reaches the combo matcher until a key resolves
+<span class="k">gate 2</span> CHORDAL :316        — release one early → j + k (or a hold, depending on which key you let go)
+<span class="k">gate 3</span> COMBO_TERM 60 ms    — both presses must land within 60 ms <span class="y">of each other's delivery</span>
+<span class="k">gate 4</span> the result is MT(CSAG|BTN1) — <span class="y">keep holding or you left-clicked</span></pre>
+<p class="note">The 60 ms window is measured from when the tap machine <i>hands the key over</i>, not from when your finger
+moved. That is why "press them together" feels like it shouldn't fail and does.</p>
+<p class="note">Gate 2's outcome is <b>not</b> always j + k. If the first key had already resolved as a hold, releasing the
+<i>second</i> one gives you a lone mod — which is precisely the <b>shift+GUI + 3</b> you are seeing: the layer and the digit
+arrived fine, only HYPR did not.</p>
+</details>
+</div>
+</section>
+
+<!-- ============================================================ DIALS -->
+<section id="dials">
+<h2>Dials — everything runtime-adjustable</h2>
+<table>
+  <tr><th>qsid</th><th>setting</th><th>w</th><th>A</th><th>B</th><th>read</th><th>write</th></tr>
+  <tr><td>2</td><td>combo_term</td><td>2</td><td class="mono">60</td><td class="mono">60</td><td><span class="cmd">just get 2</span></td><td><span class="cmd">just set 2 100</span></td></tr>
+  <tr><td>7</td><td>tapping_term</td><td>2</td><td class="mono">200</td><td class="mono">220</td><td><span class="cmd">just get 7</span></td><td><span class="cmd">just set 7 220</span></td></tr>
+  <tr><td>22</td><td>permissive_hold</td><td>1</td><td class="mono">1</td><td class="mono">1</td><td><span class="cmd">just get 22</span></td><td><span class="cmd">just set 22 1</span></td></tr>
+  <tr><td>23</td><td>hold_on_other_key_press</td><td>1</td><td class="mono">0</td><td class="mono">0</td><td><span class="cmd">just get 23</span></td><td><span class="cmd">just set 23 0</span></td></tr>
+  <tr><td>25</td><td>quick_tap_term</td><td>2</td><td class="mono">200</td><td class="mono">200</td><td><span class="cmd">just get 25</span></td><td><span class="cmd">just set 25 120</span></td></tr>
+  <tr><td><b>26</b></td><td><b>chordal_hold</b></td><td>1</td><td><b class="r">1</b></td><td><b class="g">0</b></td><td><span class="cmd">just get 26</span></td><td><span class="cmd">just set 26 0</span></td></tr>
+  <tr><td>27</td><td>flow_tap_term</td><td>2</td><td class="mono">100</td><td class="mono">100</td><td><span class="cmd">just flow-term-get</span></td><td><span class="cmd">just flow-term-set 140</span></td></tr>
+  <tr><td>28</td><td>flow_tap_shift_delta</td><td>2</td><td class="mono">90</td><td class="mono">90</td><td><span class="cmd">just flow-delta-get</span></td><td><span class="cmd">just flow-delta-set 50</span></td></tr>
+  <tr><td>29</td><td>flow_tap_shift_min_clamp</td><td>1</td><td class="mono">10</td><td class="mono">10</td><td><span class="cmd">just flow-clamp-get</span></td><td><span class="cmd">just flow-clamp-set 15</span></td></tr>
+</table>
+<p class="note"><b>Transport.</b> Those recipes use the daemon's RPC socket; the daemon isn't running on this Mac, so use
+<span class="cmd">just py-get 26</span> / <span class="cmd">just py-set 26 0</span> (direct HID) or
+<span class="cmd">just daemon-pause</span> first — daemon, Vial GUI and the Python tool each want exclusive raw-HID.
+Vial GUI renders 27 but not 28/29, which are fork-custom. All writes persist to EEPROM.</p>
+<p class="note"><b>Recommended rebalance</b> (independent of this bug): <span class="cmd">flow-term-set 140</span> ·
+<span class="cmd">flow-delta-set 50</span> · <span class="cmd">flow-clamp-set 15</span> → 90 ms for the special-cased keys,
+140 ms elsewhere, instead of the current 10 ms floor. Check with <span class="cmd">just flow-status</span>.</p>
+<p class="note"><b>combo_term is the dial this gesture actually lives on.</b> The gate is
+<span class="mono">press skew &lt; combo_term</span> measured between the two keys' <i>resolutions</i>
+(<a class="intra" href="#mechanics">Mechanics</a>), and 60 ms is tight for two fingers on one centre column.
+<span class="cmd">just py-set 2 120</span> doubles the window with no reflash. Cost: combo trigger keys buffer that much
+longer, and on this board every trigger is a tap-hold — so try 100 first, then 120.</p>
+</section>
+
+<!-- ============================================================ FIXES -->
+<section id="fixes">
+<h2>Fixes, ranked</h2>
+<p class="note">Ranked by how directly each one moves the gate that decides this gesture —
+<span class="mono">resolution skew &lt; combo_term</span>, with both keys held past
+<span class="mono">tapping_term</span>. The first two are runtime, EEPROM-persisted, and reversible in seconds.</p>
+<ol>
+<li><b>Widen the arrival window.</b> <span class="cmd">just py-set 2 120</span> — combo_term 60 → 120. This is the only
+runtime dial that acts on the gate that is actually failing you. Try it before touching anything else; it also helps
+<span class="mono">combo[4]</span>, <span class="mono">combo[3]</span>, <span class="mono">combo[7]</span>,
+<span class="mono">combo[26]</span>, which are the other same-hand chords.</li>
+<li><b>Decide what chordal hold is buying you.</b> Its measured cost is one row of the matrix: a <i>quick</i> same-hand
+chord becomes a tap instead of a hold. Board B proves the gesture wants it off —
+<span class="cmd">just py-set 26 0</span> on A and live with it for a week before writing C.</li>
+<li><b>Best structural fix: stop routing this through a chord — but not on <span class="mono">l1s</span>.</b>
+For <b>hypr + 3</b> the obvious move is <span class="mono">C_S_A_G(KC_3)</span> at layer 5 / <span class="mono">l1s</span>,
+but that cell <i>is</i> your <span class="mono">3</span>, and a 5-digit modded keycode is unconditional — you would lose
+plain 3 on layer 5. Same trap on layer 6 / <span class="mono">l1s</span>, which is your
+<span class="mono">F3</span>. Use a cell that is empty <i>on that layer</i> instead:
+<span class="mono">l4e</span> is the candidate on both, but it was <b>not captured</b> in the saved fingerprint, so
+verify with <span class="cmd">just layer-cell 4 1</span> before overwriting anything. One key, chordal-exempt thumb,
+no combo, no 260 ms, no overlap risk.</li>
+<li><b>Watch finger placement while chording.</b> A resting finger on <span class="mono">r3c</span> completes
+<span class="mono">combo[20]</span>, which shares both triggers and is longer, so <span class="mono">overlaps()</span>
+disables combo[8] and you get a mouse click instead of HYPR. Free, and it may be a bigger share of your
+"random" failures than the timing is (<a class="intra" href="#combo">Combo</a>).</li>
+<li><b>Targeted patch: GUARD 2.</b> Keeps typing protection, restores MT+MT chords by stopping chordal pre-empting
+permissive hold. <a class="intra" href="#guard2-diff">diff ↓</a></li>
+<li><b>Ordering discipline</b> — combo first, layer last, land the fingers together, and <b>hold past ~260 ms</b> before
+releasing either one. Free; do it now (<a class="intra" href="#gesture">The gesture</a>).</li>
+<li><b>Per-combo terms</b>, once <span class="mono">get_combo_term()</span> honours <span class="mono">index</span> —
+today it returns the global for every combo, so a per-combo term set in Vial is discarded. Then widen only the same-hand
+chords instead of everything. <span class="mono">-DCOMBO_TERM_PER_COMBO</span> is already on.</li>
+<li><b>Rebalance flow tap</b> whichever way you go
+(<a class="intra" href="#dials">Dials</a>) — with chordal off it is your only net.</li>
+</ol>
+
+<details id="guard2-diff"><summary>The GUARD 2 patch, plus two clean-ups in the same file</summary>
+<pre>// quantum/qmk_settings.c — get_chordal_hold()
+ if (QS_tapping_chordal_hold) {
+     if (row == 0 || row == 5 || row == 0 || row == 5) return true;
+<span class="g">+    // Two deliberate tap-holds on one hand are a chord, not a typing roll.
++    // Typing protection is preserved: tap-hold + plain key still falls through
++    // to GUARD 3 and force-taps, and Flow Tap still guards fast rolls.</span>
+<span class="g">+    if ((IS_QK_MOD_TAP(tap_hold_keycode) || IS_QK_LAYER_TAP(tap_hold_keycode))
++     && (IS_QK_MOD_TAP(other_keycode)    || IS_QK_LAYER_TAP(other_keycode))) return true;</span>
+     return get_chordal_hold_default(tap_hold_record, other_record);
+ }
+ return true;
+
+<span class="c">// same file, get_flow_tap_term(): the two thumbs behave differently today</span>
+<span class="y">-        case LT(5, KC_SPC):      // left thumb only</span>
+<span class="y">+        case LT(5, KC_SPC):      // left thumb  (ltd)</span>
+<span class="y">+        case LT(5, KC_ESC):      // right thumb (rtd) — the one you actually press</span>
+
+<span class="c">// and remove the stray brace that reads as a nested scope</span>
+<span class="y">-        case LSFT_T(KC_M): {</span>
+<span class="y">+        case LSFT_T(KC_M):</span></pre>
+<p class="note">This is a fork-file edit, not a keymap override — <span class="mono">get_chordal_hold()</span> is already
+defined non-weak in <span class="mono">qmk_settings.c</span>, and defining it again in the keymap is a link conflict.</p>
+</details>
+</section>
+
+<!-- ============================================================ COMMANDS -->
+<section id="commands">
+<h2>Commands</h2>
+<pre>cd keyboards/svalboard/keymaps/alex/tools
+
+<span class="c"># what is actually on the board right now</span>
+just layer-info            <span class="c"># vial protocol, uid, flashed firmware</span>
+just layer-taps 0          <span class="c"># only the mod-tap / layer-tap keys, physical labels</span>
+just layer-dump 6          <span class="c"># whole layer, physical layout</span>
+just layer-combos          <span class="c"># live Vial dynamic combo table</span>
+just layer-cell 5 2        <span class="c"># one matrix cell</span>
+
+<span class="c"># compare two keyboards</span>
+just layer-fingerprint board-B-f64c2b3c-fw1500
+just layer-diff board-A-1b187df2-fw1501.partial board-B-f64c2b3c-fw1500
+
+<span class="c"># settings</span>
+just flow-status · just get 26 · just py-set 26 0 · just py-list
+
+<span class="c"># raw-HID ownership (daemon ↔ Vial GUI ↔ python, one at a time)</span>
+just daemon-pause · just daemon-resume</pre>
+<p class="note">Fingerprints live in <span class="mono">tools/board-fingerprints/</span> — commit them, they are the
+cheapest regression test for "did this keyboard's config drift".</p>
+</section>
+
+<!-- ============================================================ METHOD -->
+<section id="method">
+<h2>Method &amp; confidence</h2>
+<table>
+  <tr><th>claim</th><th>status</th></tr>
+  <tr><td>chordal_hold 1 vs 0 is the only behavioural difference between the boards</td><td><span class="tag t-good">measured</span></td></tr>
+  <tr><td>combos match keycodes from the active layer (<span class="mono">combo_ref_from_layer</span> default)</td><td><span class="tag t-good">source</span></td></tr>
+  <tr><td>press-time chordal force-tap is skipped for MT+MT (<span class="mono">!is_tap_record</span>)</td><td><span class="tag t-good">source</span></td></tr>
+  <tr><td>a held tap-hold resolves as HOLD on tick events, at its own press + tapping_term (<span class="mono">keyboard.c:580</span>, <span class="mono">action_tapping.c:514</span>)</td><td><span class="tag t-good">source</span></td></tr>
+  <tr><td>combo is disabled when its two triggers land more than combo_term apart (<span class="mono">process_combo.c:481</span> + <span class="mono">:621</span>)</td><td><span class="tag t-good">source</span></td></tr>
+  <tr><td>when a combo fires, the earlier trigger keys are discarded, not typed (<span class="mono">process_combo.c:377</span> → TICK_EVENT)</td><td><span class="tag t-good">source</span></td></tr>
+  <tr><td><b>holding <span class="mono">r1c + r2c</span> past the threshold does fire combo[8]</b>, and HYPR stacks with <span class="mono">rtd</span></td><td><span class="tag t-good">observed by you</span> — and it is what pinned the model below</td></tr>
+  <tr><td>flow tap never runs on <span class="mono">LT(5,KC_ESC)</span>, nor while Ctrl/GUI/Alt held</td><td><span class="tag t-good">source</span></td></tr>
+  <tr><td>GUARD 2 does nothing for thumb chords</td><td><span class="tag t-good">source</span></td></tr>
+  <tr><td>layer 5 = left-hand numbers + right-hand nav; layer 6 = left-hand F1–F12 + right-hand numbers; both leave thumbs <span class="mono">TRNS</span></td><td><span class="tag t-good">measured</span> — board B fingerprint, re-decoded</td></tr>
+  <tr><td><span class="mono">l1s</span> is <b>3</b> on layer 5 and <b>F3</b> on layer 6; <span class="mono">rtd</span> is the layer-5 thumb</td><td><span class="tag t-good">measured</span></td></tr>
+  <tr><td>combo[8] result is <span class="mono">MT(CSAG | BTN1)</span> — hold = HYPR, tap = mouse click</td><td><span class="tag t-good">measured</span></td></tr>
+  <tr><td><span class="mono">overlaps()</span> drops the shorter combo on <i>any</i> shared trigger (<span class="mono">process_combo.c:402</span>)</td><td><span class="tag t-good">source</span></td></tr>
+  <tr><td>the saved fingerprint is missing <span class="mono">l4e</span>/<span class="mono">r1e</span> (L5) and 6 cells (L6) — unknown, not empty</td><td><span class="tag t-warn">capture gap</span></td></tr>
+  <tr><td><i>which</i> of the two failure modes a given misfire was — early release, press skew &gt; combo_term, or overlap theft</td><td><span class="tag t-warn">inferred — not traced</span></td></tr>
+</table>
+<h3>Corrections made during this investigation</h3>
+<p class="note">Both of these were wrong in the first version of this report, and the second one only got caught because
+your observation contradicted it. Keeping them visible so the correction isn't quietly re-lost:</p>
+<ol>
+<li><b>"Chordal hold force-taps <span class="mono">r1c</span> the moment <span class="mono">r2c</span> is pressed"</b> —
+false. The press-time branch is guarded by <span class="mono">!is_tap_record(keyp)</span>, which is false for mod-taps and
+layer-taps. The force-tap is at <i>release</i> (<span class="mono">:316</span>) and only inside the tapping term.</li>
+<li><b>"The two triggers are never down at once, so combo[8] cannot fire"</b> — too strong. They can both resolve as
+holds, and the combo does fire, about <span class="mono">tapping_term + combo_term</span> after the first press. What
+chordal hold actually costs is the <i>quick</i> chord, and the real binding constraint is press skew vs
+<span class="mono">combo_term</span> — which is why <span class="cmd">just py-set 2 120</span> now leads
+<a class="intra" href="#fixes">Fixes</a>.</li>
+<li><b>"Thumb → layer 6, so <span class="mono">l1s</span> gives F3"</b> — wrong layer for the gesture in question.
+<span class="mono">rtd = LT(5,KC_ESC)</span> is <b>layer 5</b>, whose left hand is a number block, so
+<span class="mono">l1s = 3</span>. Layer 6 is the <span class="mono">ltlo</span>/<span class="mono">rtlo</span> thumb, and that
+is where <span class="mono">l1s</span> is <span class="mono">F3</span>. Your shift+GUI+<b>3</b> report is what pinned this.</li>
+<li><b>Tooling bug found while checking it:</b> <span class="mono">vial-layer.py</span> labelled keycode
+<span class="mono">0x0001</span> as <span class="mono">ERR</span> (it is <span class="mono">KC_TRANSPARENT</span>), had the
+<span class="mono">0x4C+</span> nav/keypad block shifted by one, and called <span class="mono">0xE0–0xE7</span> "MOUSE" when
+they are the bare modifiers. Rebuilt from <span class="mono">quantum/keycodes.h</span>. The saved fingerprints still contain
+the old label strings, but the raw codes were always correct — so the <span class="mono">diff</span> results stand, and only
+the printed layer maps were affected.</li>
+</ol>
+<p class="note"><b>Settling the remaining row:</b> <span class="mono">CONSOLE_ENABLE = yes</span> is already in
+<span class="mono">info.json</span> features, and the <span class="mono">ac_dprintf</span>s already distinguish the cases —
+<span class="mono">"Tapping: End. Chord considered a tap"</span> (chordal release branch) vs
+<span class="mono">"No tap. Interfered by typing key"</span> (permissive) vs
+<span class="mono">"Timeout. Not tap(0)"</span> (resolved as hold). One repro with the console open tells you which mode you
+are in, and whether the combo ever reached its buffer.</p>
+<h3>Artifacts</h3>
+<ul>
+<li><span class="mono">tools/vial-layer.py</span> — live keymap + combo reader. Works around two fork quirks:
+<span class="mono">quantum/via.c</span> routes VIA commands with <span class="mono">data[0] = command id</span> (no header
+byte) and writes the keycode reply at <span class="mono">command_data[3..4]</span>, not stock <span class="mono">[0..1]</span>;
+and the <span class="mono">0xAB</span> state broadcasts interleave with replies and must be skipped. Generic Vial tooling
+mis-reads this board.</li>
+<li><span class="mono">tools/justfile</span> — <span class="mono">layer-info / dump / taps / cell / combos / fingerprint / diff</span></li>
+<li><span class="mono">docs/qmk_hold_features_primer.html</span> — companion primer: every hold feature this build
+compiles, which QSIDs actually reach the tap machine, the 42-tap-hold census, thumb/numpad layer access, and
+combos-over-layers. <a class="intra" href="qmk_hold_features_primer.html">open</a></li>
+<li><span class="mono">tools/board-fingerprints/*.json</span> — board A (partial) and board B (full)</li>
+</ul>
+</section>
+</div>
+</body>
+</html>

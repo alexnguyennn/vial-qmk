@@ -74,6 +74,36 @@ daemon-resume:
 
 daemon-restart: daemon-pause daemon-resume
 
+# --- live keymap: read what is actually bound on the board ---
+
+# Protocol + uid + flashed firmware version.
+layer-info:
+    uv run --quiet --project . vial-layer.py info
+
+# Full physical layout of a layer. Example: `just layer-dump 5`
+layer-dump layer:
+    uv run --quiet --project . vial-layer.py dump --layer {{ layer }}
+
+# Only the tap-hold (mod-tap / layer-tap) keys of a layer.
+layer-taps layer:
+    uv run --quiet --project . vial-layer.py taps --layer {{ layer }}
+
+# Live combo table (Vial dynamic combos) read off the board.
+layer-combos:
+    uv run --quiet --project . vial-layer.py combos
+
+# Save a full config fingerprint (firmware + QSIDs + layers + combos) as JSON.
+layer-fingerprint name:
+    uv run --quiet --project . vial-layer.py fingerprint --layers 0,5,6 --out board-fingerprints/{{ name }}.json
+
+# Compare two fingerprints. Example: `just layer-diff a b` (names without .json)
+layer-diff a b:
+    uv run --quiet --project . vial-layer.py diff board-fingerprints/{{ a }}.json board-fingerprints/{{ b }}.json
+
+# One cell. Example: `just layer-cell 5 2`
+layer-cell row col:
+    uv run --quiet --project . vial-layer.py cell --row {{ row }} --col {{ col }}
+
 # --- fallback: direct HID via Python (requires daemon stopped) ---
 
 # One-off `vial-qs.py` invocation via uv-managed env. Only useful when
