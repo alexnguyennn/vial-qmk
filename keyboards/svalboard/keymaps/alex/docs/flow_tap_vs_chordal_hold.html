@@ -252,7 +252,7 @@ first one first is an ordinary tap at <span class="mono">:284</span> and loses o
 <p class="note"><b>You do not then wait out <span class="mono">combo_term</span>.</b> Releasing a trigger flushes the
 prepared combo on the spot (<span class="mono">process_combo.c:634</span> → <span class="mono">apply_combos()</span>);
 <span class="mono">combo_task()</span> only fires it on the timer if you keep holding. So
-<span class="cmd">just py-set 2 120</span> buys skew tolerance without asking for a longer hold —
+<span class="cmd">just set 2 120</span> buys skew tolerance without asking for a longer hold —
 <a class="intra" href="timing_two_clocks.html#q1">Two clocks</a>.</p>
 </section>
 
@@ -466,8 +466,11 @@ arrived fine, only HYPR did not.</p>
   <tr><td>28</td><td>flow_tap_shift_delta</td><td>2</td><td class="mono">90</td><td class="mono">90</td><td><span class="cmd">just flow-delta-get</span></td><td><span class="cmd">just flow-delta-set 50</span></td></tr>
   <tr><td>29</td><td>flow_tap_shift_min_clamp</td><td>1</td><td class="mono">10</td><td class="mono">10</td><td><span class="cmd">just flow-clamp-get</span></td><td><span class="cmd">just flow-clamp-set 15</span></td></tr>
 </table>
-<p class="note"><b>Transport.</b> Those recipes use the daemon's RPC socket; the daemon isn't running on this Mac, so use
-<span class="cmd">just py-get 26</span> / <span class="cmd">just py-set 26 0</span> (direct HID) or
+<p class="note"><b>Transport.</b> <span class="cmd">just get 26</span> / <span class="cmd">just set 26 0</span> go over the
+daemon's RPC socket and take a bare qsid — the byte width is looked up from
+<span class="cmd">quantum/qmk_settings.c</span> (<span class="cmd">just py-check</span> verifies the table, and
+<span class="cmd">just py-names</span> prints it with no keyboard attached). If the daemon isn't running, or it owns the
+raw-HID interface you need, use <span class="cmd">just py-get</span> / <span class="cmd">just py-set</span> with
 <span class="cmd">just daemon-pause</span> first — daemon, Vial GUI and the Python tool each want exclusive raw-HID.
 Vial GUI renders 27 but not 28/29, which are fork-custom. All writes persist to EEPROM.</p>
 <p class="note"><b>Recommended rebalance</b> (independent of this bug): <span class="cmd">flow-term-set 140</span> ·
@@ -476,7 +479,7 @@ Vial GUI renders 27 but not 28/29, which are fork-custom. All writes persist to 
 <p class="note"><b>combo_term is the dial this gesture actually lives on.</b> The gate is
 <span class="mono">press skew &lt; combo_term</span> measured between the two keys' <i>resolutions</i>
 (<a class="intra" href="#mechanics">Mechanics</a>), and 60 ms is tight for two fingers on one centre column.
-<span class="cmd">just py-set 2 120</span> doubles the window with no reflash. It is a <b>deadline, not a delay</b>:
+<span class="cmd">just set 2 120</span> doubles the window with no reflash. It is a <b>deadline, not a delay</b>:
 releasing a trigger applies the prepared combo immediately, so you do not have to hold any longer — and a typed
 <span class="mono">jk</span> cannot chord at any value, because a tap delivers press+release atomically and the first
 trigger's down-bit is already cleared. <a class="intra" href="timing_two_clocks.html">Two clocks ↓</a></p>
@@ -489,7 +492,7 @@ trigger's down-bit is already cleared. <a class="intra" href="timing_two_clocks.
 <span class="mono">resolution skew &lt; combo_term</span>, with both keys held past
 <span class="mono">tapping_term</span>. The first two are runtime, EEPROM-persisted, and reversible in seconds.</p>
 <ol>
-<li><b>Widen the arrival window.</b> <span class="cmd">just py-set 2 120</span> — combo_term 60 → 120. This raises how far
+<li><b>Widen the arrival window.</b> <span class="cmd">just set 2 120</span> — combo_term 60 → 120. This raises how far
 apart your two fingers may land (<span class="mono">process_combo.c:481</span> compares the two triggers'
 <i>delivery</i> times, which reproduces your finger skew). It does <b>not</b> make you hold longer: releasing a trigger
 applies the combo immediately, and the hold duration you are fighting is <span class="mono">tapping_term</span>, which
@@ -498,7 +501,7 @@ this dial does not touch. Also helps <span class="mono">combo[3]</span>, <span c
 <a class="intra" href="timing_two_clocks.html#tradeoff">what it actually costs ↓</a></li>
 <li><b>Decide what chordal hold is buying you.</b> Its measured cost is one row of the matrix: a <i>quick</i> same-hand
 chord becomes a tap instead of a hold. Board B proves the gesture wants it off —
-<span class="cmd">just py-set 26 0</span> on A and live with it for a week before writing C.</li>
+<span class="cmd">just set 26 0</span> on A and live with it for a week before writing C.</li>
 <li><b>Best structural fix: stop routing this through a chord — but not on <span class="mono">l1s</span>.</b>
 For <b>hypr + 3</b> the obvious move is <span class="mono">C_S_A_G(KC_3)</span> at layer 5 / <span class="mono">l1s</span>,
 but that cell <i>is</i> your <span class="mono">3</span>, and a 5-digit modded keycode is unconditional — you would lose
@@ -565,7 +568,7 @@ just layer-fingerprint board-B-f64c2b3c-fw1500
 just layer-diff board-A-1b187df2-fw1501.partial board-B-f64c2b3c-fw1500
 
 <span class="c"># settings</span>
-just flow-status · just get 26 · just py-set 26 0 · just py-list
+just flow-status · just get 26 · just set 26 0 · just py-names · just py-check
 
 <span class="c"># raw-HID ownership (daemon ↔ Vial GUI ↔ python, one at a time)</span>
 just daemon-pause · just daemon-resume</pre>
@@ -604,7 +607,7 @@ layer-taps. The force-tap is at <i>release</i> (<span class="mono">:316</span>) 
 <li><b>"The two triggers are never down at once, so combo[8] cannot fire"</b> — too strong. They can both resolve as
 holds, and the combo does fire, about <span class="mono">tapping_term + combo_term</span> after the first press. What
 chordal hold actually costs is the <i>quick</i> chord, and the real binding constraint is press skew vs
-<span class="mono">combo_term</span> — which is why <span class="cmd">just py-set 2 120</span> now leads
+<span class="mono">combo_term</span> — which is why <span class="cmd">just set 2 120</span> now leads
 <a class="intra" href="#fixes">Fixes</a>.</li>
 <li><b>"Thumb → layer 6, so <span class="mono">l1s</span> gives F3"</b> — wrong layer for the gesture in question.
 <span class="mono">rtd = LT(5,KC_ESC)</span> is <b>layer 5</b>, whose left hand is a number block, so

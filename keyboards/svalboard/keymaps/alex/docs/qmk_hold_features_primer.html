@@ -305,7 +305,7 @@ Numpad digits still come from layer 6, so <span class="g">hypr + 4 + 5 → HYPR 
 <p class="note"><b>Cost, and it is real:</b> a combo trigger key is held in the combo buffer for
 <span class="mono">combo_term</span> before being released. Pinning combos to layer 0 extends that buffering to the
 numpad digits that sit at trigger positions. With combo_term 60 that is a 60 ms lag on those digits — measure before
-committing, and consider <span class="cmd">just py-set 2 40</span> alongside it.</p>
+committing, and consider <span class="cmd">just set 2 40</span> alongside it.</p>
 </details>
 <details><summary>Option B — duplicate the chord on the numpad layer (surgical)</summary>
 <pre>combo[8]   MT(CS|J) + MT(SG|K)  → MT(HYPR|0xD1)   <span class="c">layer 0, unchanged</span>

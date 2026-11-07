@@ -197,7 +197,14 @@ class Board:
                  serial: str | None = None, index: int | None = None) -> None:
         self.dev = hid.device()
         path, self.serial = find_vial_path(vid, pid, serial, index)
-        self.dev.open_path(path)
+        try:
+            self.dev.open_path(path)
+        except OSError as exc:
+            raise SystemExit(
+                f"found the keyboard ({self.serial}) but could not open it ({exc}).\n"
+                "   the raw-HID interface is exclusive — qmk-state-daemon or the Vial GUI\n"
+                "   probably holds it. Try `just daemon-pause` first, then `just daemon-resume`."
+            )
 
     def close(self) -> None:
         self.dev.close()

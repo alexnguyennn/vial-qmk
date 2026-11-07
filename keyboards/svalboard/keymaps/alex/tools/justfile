@@ -22,21 +22,31 @@ default:
 list:
     {{ DAEMON }} qsid list
 
-# Read a QSID value. Example: `just get 28`
-get qsid:
-    {{ DAEMON }} qsid get {{ qsid }}
+# Read a QSID value. Width is resolved from quantum/qmk_settings.c via
+# `vial-qs.py width` (verified by `just py-check`); pass a third arg to override.
+# Example: `just get 28`
+get qsid width="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    w="{{ width }}"
+    [[ -z "$w" ]] && w="$(uv run --quiet --project . vial-qs.py width {{ qsid }})"
+    {{ DAEMON }} qsid get {{ qsid }} --width "$w"
 
-# Write a QSID value. Example: `just set 28 40`
-set qsid value:
-    {{ DAEMON }} qsid set {{ qsid }} {{ value }}
+# Write a QSID value. Same width resolution as `get`. Example: `just set 2 120`
+set qsid value width="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    w="{{ width }}"
+    [[ -z "$w" ]] && w="$(uv run --quiet --project . vial-qs.py width {{ qsid }})"
+    {{ DAEMON }} qsid set {{ qsid }} {{ value }} --width "$w"
 
 # --- shortcuts for the flow-tap QSIDs (see keymap.c) ---
 
 flow-term-get:
-    qmk-state-daemon qsid get 27 --width 2
+    @just get 27
 
 flow-term-set value:
-    qmk-state-daemon qsid set 27 {{ value }} --width 2
+    @just set 27 {{ value }}
 
 flow-delta-get:
     @just get 28
@@ -104,18 +114,53 @@ layer-diff a b:
 layer-cell row col:
     uv run --quiet --project . vial-layer.py cell --row {{ row }} --col {{ col }}
 
-# --- fallback: direct HID via Python (requires daemon stopped) ---
+# --- live firmware state (layers + real/weak/one-shot mods) ---
 
-# One-off `vial-qs.py` invocation via uv-managed env. Only useful when
-# the daemon isn't running (e.g. troubleshooting the daemon itself).
+# Watch the board's 0xAB state broadcasts. Requires the daemon paused.
+state-watch secs="10":
+    uv run --quiet --project . sval-state.py {{ secs }}
+
+# Capture a power-on: pauses the daemon, waits for you to double-tap reset or
+# re-seat the cable, streams state, then resumes the daemon.
+boot-watch secs="25":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    just daemon-pause
+    trap 'just daemon-resume' EXIT
+    echo ">>> double-tap RESET (or unplug/replug) with your fingers ON the home pads"
+    uv run --quiet --project . sval-state.py {{ secs }}
+
+# --- fallback: direct HID via Python ---
+#
+# WHY THIS EXISTS: the raw-HID interface is exclusive. qmk-state-daemon holds it
+# open to poll layer state, so Vial GUI and vial-qs.py can only get a handle while
+# the daemon is paused. `just daemon-pause`, do the direct-HID thing, `just
+# daemon-resume`. If the daemon is healthy prefer the `get` / `set` / `flow-*`
+# recipes above - same writes, richer output, nothing to stop.
+#
+# `py-names` and `py-check` need no device and no daemon at all.
+
+# Print the built-in QSID table. No keyboard, no daemon.
+py-names:
+    uv run --project . vial-qs.py names
+
+# Ask the keyboard which QSIDs it actually supports. Needs the daemon paused.
 py-list:
     uv run --project . vial-qs.py list
+
+# Read every interesting QSID in one session. Needs the daemon paused.
+py-dump:
+    uv run --project . vial-qs.py dump
 
 py-get qsid:
     uv run --project . vial-qs.py get {{ qsid }}
 
 py-set qsid value:
     uv run --project . vial-qs.py set {{ qsid }} {{ value }}
+
+# Diff this tool's QSID table against quantum/qmk_settings.c. No device needed.
+py-check:
+    uv run --project . vial-qs.py check
 
 sync:
     uv sync
