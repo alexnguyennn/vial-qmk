@@ -72,6 +72,7 @@
   <a href="#mechanics">Mechanics</a><a href="#combo">Combo</a><a href="#dials">Dials</a>
   <a href="#fixes">Fixes</a><a href="#commands">Commands</a><a href="#method">Method</a>
   <a href="qmk_hold_features_primer.html" style="color:var(--accent);border-color:#3a2f52">Hold-features primer →</a>
+  <a href="timing_two_clocks.html" style="color:var(--accent);border-color:#3a2f52">Two clocks →</a>
 </div></nav>
 
 <div class="wrap">
@@ -221,12 +222,15 @@ before assuming any of them is free.</p>
   <div class="scale"><div>0–300 ms</div><div><span>0</span><span>75</span><span>150</span><span>225</span><span>300</span></div></div>
 </div>
 
-<p class="note" style="margin-top:16px"><b>The same gesture, released inside the term — the surprising one:</b></p>
+<p class="note" style="margin-top:16px"><b>Same gesture, released inside the term — and note that chordal only gets a
+vote in one of the two release orderings:</b></p>
 <div class="lanes">
   <div class="lane"><span>r1c MT(CS|J)</span><div class="track">
-    <div class="bar b-wait" style="left:1%;width:28%">pending</div><div class="bar b-tap" style="left:29%;width:44%">:316 chordal wins → j</div></div></div>
+    <div class="bar b-wait" style="left:1%;width:28%">pending</div><div class="bar b-tap" style="left:29%;width:44%">tap → j</div></div></div>
   <div class="lane"><span>r2c MT(SG|K)</span><div class="track">
-    <div class="bar b-wait" style="left:9%;width:26%">pending</div><div class="bar b-tap" style="left:35%;width:38%">→ k</div></div></div>
+    <div class="bar b-wait" style="left:9%;width:26%">pending</div><div class="bar b-tap" style="left:35%;width:38%">:316 → k</div></div></div>
+  <div class="lane"><span>chordal scope</span><div class="track">
+    <div class="bar b-tap" style="left:1%;width:72%;opacity:.45">inside if (WITHIN_TAPPING_TERM) — after 200 ms, never called</div></div></div>
   <div class="lane"><span>combo[8]</span><div class="track">
     <div class="bar b-tap" style="left:29%;width:60%;opacity:.6">triggers never both arrive as holds → dead</div></div></div>
   <div class="scale"><div>0–200 ms</div><div><span>0</span><span>50</span><span>100</span><span>150</span><span>200</span></div></div>
@@ -242,10 +246,14 @@ before assuming any of them is free.</p>
 <span class="r">and if you release the chord as soon as it fires → BTN1, a mouse left-click, instead of HYPR</span></pre>
 <p class="note">Two independent requirements, which is why it feels unreliable: <b>land the two fingers within
 <span class="mono">combo_term</span> of each other</b> (a chord, not a roll) <b>and keep both down past
-<span class="mono">tapping_term</span></b> (so each resolves as a hold rather than a tap). Releasing either trigger early
-hands the pair to the chordal branch at <span class="mono">:316</span>. Raising
-<span class="mono">combo_term</span> widens the first of those two windows — it is the dial with the most direct effect
-on this gesture, see <a class="intra" href="#fixes">Fixes</a>.</p>
+<span class="mono">tapping_term</span></b> (so each resolves as a hold rather than a tap). Releasing early hands the pair to
+the chordal branch at <span class="mono">:316</span> — but only if you release the <i>second</i> key first; releasing the
+first one first is an ordinary tap at <span class="mono">:284</span> and loses on both boards.</p>
+<p class="note"><b>You do not then wait out <span class="mono">combo_term</span>.</b> Releasing a trigger flushes the
+prepared combo on the spot (<span class="mono">process_combo.c:634</span> → <span class="mono">apply_combos()</span>);
+<span class="mono">combo_task()</span> only fires it on the timer if you keep holding. So
+<span class="cmd">just py-set 2 120</span> buys skew tolerance without asking for a longer hold —
+<a class="intra" href="timing_two_clocks.html#q1">Two clocks</a>.</p>
 </section>
 
 <!-- ============================================================ MECHANICS -->
@@ -258,8 +266,11 @@ on this gesture, see <a class="intra" href="#fixes">Fixes</a>.</p>
   └─ <span class="k">COMBO TERM</span>     <span class="c">guards ARRIVAL</span> "did both triggers land in 60 ms?"   → <span class="r">disable combo</span>
 
 <span class="y">order is the whole story:</span> chordal is evaluated <b>before</b> permissive, so a chordal "false"
-pre-empts the answer that would have given you a hold. And because a tap-hold's keycode only exists for the
-combo matcher <b>after</b> resolution, the combo gate is measured against <b>resolution times</b>, not finger times.</pre>
+pre-empts the answer that would have given you a hold — but <b>only inside the tapping term</b>:
+<span class="mono">:316</span> is nested inside <span class="mono">if (WITHIN_TAPPING_TERM(event))</span>
+(<span class="mono">:275</span>), and the after-term path at <span class="mono">:515</span> resolves the key as a
+<b>hold</b> without consulting chordal at all. And because a tap-hold's keycode only exists for the combo matcher
+<b>after</b> resolution, the combo gate is measured against <b>resolution times</b>, not finger times.</pre>
 
 <details><summary>Chordal hold guard order — and why the thumb is already exempt</summary>
 <pre>get_chordal_hold(a, b)                        <span class="c">// quantum/qmk_settings.c:341</span>
@@ -324,21 +335,28 @@ added lag on every combo trigger key — all of which are tap-holds on this boar
 <details><summary>Outcome matrix — chordal on vs off</summary>
 <table>
   <tr><th>your press</th><th>chordal ON (board A)</th><th>chordal OFF (board B)</th></tr>
-  <tr><td>tight chord, <b>released</b> inside term</td>
+  <tr><td>tight chord, <b>release r2c first</b>, inside term</td>
       <td class="r">:316 → force taps → <b>j + k</b></td>
       <td class="g">:339 → permissive holds, in one scan → skew ≈ 0 → <b>combo fires</b></td></tr>
+  <tr><td>tight chord, <b>release r1c first</b>, inside term</td>
+      <td class="r">:284 plain tap → <b>j + k</b></td>
+      <td class="r">:284 plain tap → <b>j + k</b> <span class="c">— loses on both boards</span></td></tr>
   <tr><td>tight chord, <b>held</b> past term</td>
-      <td class="g">both resolve as holds ≈ skew apart → <b>combo fires ≈ 260 ms</b></td>
-      <td class="g">same</td></tr>
+      <td class="g">both resolve as holds ≈ skew apart → <b>combo fires</b></td>
+      <td class="g">same — <span class="c">chordal is never consulted after the term</span></td></tr>
   <tr><td>slow roll (skew &gt; combo_term), held</td>
       <td class="r">skew test → DISABLE_COMBO → j + k / stray mods</td>
       <td class="r">same, unless permissive hold bursts them into one scan</td></tr>
   <tr><td>thumb + finger (rtd + anything)</td>
       <td class="g">GUARD 1 → exempt, unaffected</td><td class="g">unaffected</td></tr>
 </table>
-<p class="note">So chordal hold's real cost here is <b>one row</b>: it converts the <i>quick chord</i> — the one that
-should be the easiest — from a hold into a tap. Board B's permissive-hold branch rescues it because that branch emits
-the whole burst in a single matrix scan, so the two triggers land ~0 ms apart.</p>
+<p class="note">So chordal hold's real cost is <b>one cell of this matrix</b>: release-the-second-key-first, inside the
+term — where it converts a <i>quick</i> same-hand chord from a hold into a tap. Board B's permissive-hold branch rescues
+that case because that branch emits the whole burst in a single matrix scan, so the two triggers land ~0 ms apart.
+<b>Everything past <span class="mono">tapping_term</span> is identical on both boards</b>, because
+<span class="mono">:316</span> lives inside <span class="mono">if (WITHIN_TAPPING_TERM(event))</span> at
+<span class="mono">:275</span> and the after-term path at <span class="mono">:515</span> resolves the key as a hold without
+ever asking chordal.</p>
 <p class="note">Making <span class="mono">get_chordal_hold()</span> return true for MT+MT doesn't "make it a hold" — it
 stops chordal pre-empting permissive hold, which then does its normal job.</p>
 </details>
@@ -458,8 +476,10 @@ Vial GUI renders 27 but not 28/29, which are fork-custom. All writes persist to 
 <p class="note"><b>combo_term is the dial this gesture actually lives on.</b> The gate is
 <span class="mono">press skew &lt; combo_term</span> measured between the two keys' <i>resolutions</i>
 (<a class="intra" href="#mechanics">Mechanics</a>), and 60 ms is tight for two fingers on one centre column.
-<span class="cmd">just py-set 2 120</span> doubles the window with no reflash. Cost: combo trigger keys buffer that much
-longer, and on this board every trigger is a tap-hold — so try 100 first, then 120.</p>
+<span class="cmd">just py-set 2 120</span> doubles the window with no reflash. It is a <b>deadline, not a delay</b>:
+releasing a trigger applies the prepared combo immediately, so you do not have to hold any longer — and a typed
+<span class="mono">jk</span> cannot chord at any value, because a tap delivers press+release atomically and the first
+trigger's down-bit is already cleared. <a class="intra" href="timing_two_clocks.html">Two clocks ↓</a></p>
 </section>
 
 <!-- ============================================================ FIXES -->
@@ -469,10 +489,13 @@ longer, and on this board every trigger is a tap-hold — so try 100 first, then
 <span class="mono">resolution skew &lt; combo_term</span>, with both keys held past
 <span class="mono">tapping_term</span>. The first two are runtime, EEPROM-persisted, and reversible in seconds.</p>
 <ol>
-<li><b>Widen the arrival window.</b> <span class="cmd">just py-set 2 120</span> — combo_term 60 → 120. This is the only
-runtime dial that acts on the gate that is actually failing you. Try it before touching anything else; it also helps
-<span class="mono">combo[4]</span>, <span class="mono">combo[3]</span>, <span class="mono">combo[7]</span>,
-<span class="mono">combo[26]</span>, which are the other same-hand chords.</li>
+<li><b>Widen the arrival window.</b> <span class="cmd">just py-set 2 120</span> — combo_term 60 → 120. This raises how far
+apart your two fingers may land (<span class="mono">process_combo.c:481</span> compares the two triggers'
+<i>delivery</i> times, which reproduces your finger skew). It does <b>not</b> make you hold longer: releasing a trigger
+applies the combo immediately, and the hold duration you are fighting is <span class="mono">tapping_term</span>, which
+this dial does not touch. Also helps <span class="mono">combo[3]</span>, <span class="mono">combo[4]</span>,
+<span class="mono">combo[7]</span>, <span class="mono">combo[26]</span> — the other same-hand chords.
+<a class="intra" href="timing_two_clocks.html#tradeoff">what it actually costs ↓</a></li>
 <li><b>Decide what chordal hold is buying you.</b> Its measured cost is one row of the matrix: a <i>quick</i> same-hand
 chord becomes a tap instead of a hold. Board B proves the gesture wants it off —
 <span class="cmd">just py-set 26 0</span> on A and live with it for a week before writing C.</li>
@@ -593,6 +616,15 @@ is where <span class="mono">l1s</span> is <span class="mono">F3</span>. Your shi
 they are the bare modifiers. Rebuilt from <span class="mono">quantum/keycodes.h</span>. The saved fingerprints still contain
 the old label strings, but the raw codes were always correct — so the <span class="mono">diff</span> results stand, and only
 the printed layer maps were affected.</li>
+<li><b>"<span class="mono">combo_term</span> 120 costs latency on every trigger key"</b> — overstated, and you caught it.
+<span class="mono">combo_term</span> is a <b>deadline</b>: releasing a trigger applies the prepared combo immediately
+(<span class="mono">process_combo.c:634</span>), and only the keep-holding path waits for
+<span class="mono">combo_task()</span>. It is a finger-skew tolerance dial, not a speed dial.</li>
+<li><b>The second timeline panel implied chordal always wins.</b> It cannot: <span class="mono">:316</span> is nested
+inside <span class="mono">if (WITHIN_TAPPING_TERM(event))</span> at <span class="mono">:275</span>, and the after-term path
+at <span class="mono">:515</span> resolves to a <b>hold</b> without asking chordal. So board A and board B are identical
+once you hold past the term — which is precisely why you do not get j/k every time. The outcome matrix is now split by
+<i>release order</i>, because releasing the first key first loses on both boards via <span class="mono">:284</span>.</li>
 </ol>
 <p class="note"><b>Settling the remaining row:</b> <span class="mono">CONSOLE_ENABLE = yes</span> is already in
 <span class="mono">info.json</span> features, and the <span class="mono">ac_dprintf</span>s already distinguish the cases —

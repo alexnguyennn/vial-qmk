@@ -90,7 +90,11 @@ Companion to <a class="intra" href="flow_tap_vs_chordal_hold.html">the hypr-chor
         <span class="c">then TAPPING_TERM expires → hold if still down, tap if released</span></pre>
 <p class="note"><b>The one rule that explains almost every bug on this board:</b> gates 1 and 2 are checked
 <i>before</i> gate 4, so a "no" from chordal or flow tap <b>pre-empts</b> the permissive-hold answer that would have
-given you a hold. Your layout is 42 tap-holds, so essentially <i>every</i> key you press runs this ladder.</p>
+given you a hold — but only <b>inside <span class="mono">tapping_term</span></b>. Chordal's release branch is nested
+inside <span class="mono">if (WITHIN_TAPPING_TERM(event))</span> (<span class="mono">action_tapping.c:275</span>), and the
+after-term path at <span class="mono">:515</span> resolves the key as a <b>hold</b> without consulting it: hold past the
+term and chordal has no vote at all. Your layout is 42 tap-holds, so essentially <i>every</i> key you press runs this
+ladder.</p>
 <p class="note">Two consequences specific to us, developed below:
 <b>the thumb is structurally the safe place for layer access</b> (<a class="intra" href="#thumbs">Thumbs &amp; numpad</a>),
 and <b>combos resolve keycodes from the active layer</b>, which is why layer-6 chords behave differently
@@ -324,8 +328,10 @@ process_combo.c:621   timer = timer_read();   <span class="c">// reset on every 
 <span class="r">⇒ skew &gt; combo_term (60 ms) disables the combo outright</span>
 <span class="g">⇒ earliest possible fire = tapping_term + combo_term ≈ 260 ms</span></pre>
 <ol>
-<li><b>Widen combo_term</b> — QSID 2, 60 → 100–120. The only runtime lever on the gate above. Costs buffering latency on
-every combo trigger key, which on this board means every one of these is a tap-hold.</li>
+<li><b>Widen combo_term</b> — QSID 2, 60 → 100–120. The only runtime lever on the gate above. It is a <b>deadline, not a
+delay</b>: releasing a trigger applies the prepared combo immediately, so you never wait the term out, and a fast typed
+pair can never chord because a tap delivers press+release atomically. <a class="intra" href="timing_two_clocks.html">Two
+clocks ↓</a></li>
 <li><b>Chordal hold pre-empts permissive hold at <i>release</i> time</b> (<span class="mono">action_tapping.c:316</span> beats
 <span class="mono">:339</span>) → a quick same-hand chord is force-tapped into <span class="mono">j + k</span> instead of
 resolving as two holds. Hold past the term and it works; release early and it doesn't. Either QSID 26 off, or the MT+MT

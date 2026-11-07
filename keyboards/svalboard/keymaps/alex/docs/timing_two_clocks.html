@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>lightly — two clocks: what combo_term actually gates, and when chordal can even run</title>
+<style>
+  :root{--bg:#0f1115;--panel:#171a21;--line:#2a3140;--ink:#e8ecf3;--dim:#98a3b5;--faint:#6b7688;
+        --bad:#ff6b6b;--good:#4ade80;--warn:#fbbf24;--info:#60a5fa;--accent:#c084fc;
+        --mono:ui-monospace,SFMono-Regular,Menlo,monospace}
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;padding:0 0 80px;background:var(--bg);color:var(--ink);
+       font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+  .wrap{max-width:1140px;margin:0 auto;padding:0 22px}
+  nav{position:sticky;top:0;z-index:9;background:#0f1115ee;backdrop-filter:blur(8px);
+      border-bottom:1px solid var(--line);padding:9px 0;margin-bottom:26px}
+  nav .wrap{display:flex;gap:6px;flex-wrap:wrap}
+  nav a{color:var(--dim);text-decoration:none;font:600 11px/1 var(--mono);text-transform:uppercase;
+        letter-spacing:.07em;padding:6px 10px;border-radius:20px;border:1px solid transparent}
+  nav a:hover{color:var(--ink);border-color:var(--line);background:var(--panel)}
+  h1{font-size:23px;margin:0 0 4px;letter-spacing:-.2px}
+  h2{font-size:12px;text-transform:uppercase;letter-spacing:.12em;color:var(--accent);margin:0 0 12px}
+  .sub{color:var(--dim);margin:0 0 26px;font-size:13.5px}
+  section{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:20px;margin-bottom:16px;scroll-margin-top:64px}
+  code,.mono{font-family:var(--mono);font-size:12.5px}
+  a.intra{color:var(--info);text-decoration:none;border-bottom:1px dotted #2f4a6d}
+  a.intra:hover{border-bottom-style:solid}
+  pre{margin:0;padding:12px;background:#0b0d11;border:1px solid var(--line);border-radius:8px;
+      overflow-x:auto;font-family:var(--mono);font-size:11.5px;line-height:1.65;color:#cdd6e4}
+  table{border-collapse:collapse;width:100%;font-family:var(--mono);font-size:12px;margin:6px 0}
+  th{text-align:left;color:var(--faint);font-weight:600;font-size:10.5px;text-transform:uppercase;
+     letter-spacing:.07em;padding:0 8px 6px;border-bottom:1px solid var(--line)}
+  td{padding:5px 8px;border-bottom:1px solid #212733}
+  tr:last-child td{border-bottom:0}
+  .k{color:var(--accent)}.c{color:#5f6b7d}.g{color:var(--good)}.r{color:var(--bad)}.y{color:var(--warn)}.i{color:var(--info)}
+  .note{color:var(--dim);font-size:13px}.note b{color:var(--ink)}
+  .lead{display:grid;grid-template-columns:34px 1fr;gap:12px;align-items:start;
+        padding:12px 0;border-bottom:1px solid #212733;margin-bottom:14px}
+  .lead:last-of-type{border-bottom:0}
+  .n{display:grid;place-items:center;width:26px;height:26px;border-radius:8px;
+     background:#22282f;color:var(--dim);font:700 13px/1 var(--mono)}
+  .n.good{background:#173a24;color:var(--good)}
+  .n.bad{background:#3a1d1d;color:var(--bad)}
+  .cmd{background:#0b0d11;border:1px solid var(--line);border-radius:5px;padding:1px 6px;
+       font-family:var(--mono);font-size:11.5px;color:var(--info);white-space:nowrap}
+  .tag{display:inline-block;padding:1px 8px;border-radius:20px;font:600 10.5px/1.7 var(--mono)}
+  .t-bad{background:#3a1d1d;color:var(--bad)}.t-good{background:#173a24;color:var(--good)}
+  .t-warn{background:#3a2f14;color:var(--warn)}
+  .lanes{font-family:var(--mono);font-size:12px}
+  .lane{display:grid;grid-template-columns:132px 1fr;gap:10px;align-items:center;margin-bottom:6px}
+  .track{position:relative;height:21px;background:#0b0d11;border:1px solid var(--line);border-radius:5px}
+  .bar{position:absolute;top:3px;height:13px;border-radius:3px;display:flex;align-items:center;
+       padding:0 6px;font-size:9.5px;color:#0b0d11;font-weight:700;overflow:hidden;white-space:nowrap}
+  .b-hold{background:var(--good)}.b-tap{background:var(--bad)}.b-wait{background:#48546b;color:#e8ecf3}
+  .b-win{background:#3d2f6b;color:#d6c4ff}.b-dead{background:#3a1d1d;color:var(--bad)}
+  .scale{display:grid;grid-template-columns:132px 1fr;gap:10px;color:var(--faint);font-size:10px}
+  .scale>div:last-child{display:flex;justify-content:space-between}
+  h3{font-size:13px;margin:20px 0 8px;color:var(--dim)}
+  details{border:1px solid var(--line);border-radius:9px;margin:9px 0;background:#141821}
+  details[open]{padding-bottom:12px}
+  summary{cursor:pointer;padding:10px 13px;font:600 12.5px/1.4 var(--mono);color:var(--dim);list-style:none}
+  summary:before{content:"▸ ";color:var(--accent)}
+  details[open] summary:before{content:"▾ "}
+  details[open] summary{border-bottom:1px solid var(--line);margin-bottom:12px;color:var(--ink)}
+  details>pre,details>p{margin-left:13px;margin-right:13px}
+  details>p{font-size:13px;color:var(--dim)}
+</style>
+</head>
+<body>
+
+<nav><div class="wrap">
+  <a href="#q1">Does 120 mean hold longer?</a><a href="#q2">Why chordal isn't first</a>
+  <a href="#clocks">The two clocks</a><a href="#guard">Guard containment</a>
+  <a href="#tradeoff">What 120 really costs</a><a href="#recipe">Recipe</a>
+</div></nav>
+
+<div class="wrap">
+<h1>Two clocks — <span class="mono">combo_term</span> vs <span class="mono">tapping_term</span></h1>
+<p class="sub">Answers to two sharp questions about
+<a class="intra" href="flow_tap_vs_chordal_hold.html">the hypr-chord report</a>. Both of its premises were worth
+checking, and one of them caught a real error in that report.
+Sources: <span class="mono">quantum/action_tapping.c</span>, <span class="mono">quantum/process_keycode/process_combo.c</span>.</p>
+
+<!-- ==================================================== Q1 -->
+<section id="q1">
+<h2>Q1 — does combo_term 120 mean I hold longer to register hypr+3?</h2>
+<div class="lead"><div class="n good">✓</div><div>
+<b>No — on the path you actually use.</b> <span class="mono">combo_term</span> is a <b>deadline, not a delay</b>.
+Releasing any trigger key flushes the prepared combo <i>immediately</i>; you never wait the term out.
+</div></div>
+<pre><span class="c">// process_combo.c:634 — the tail of process_combo(), runs on EVERY event</span>
+if (record->event.pressed && is_combo_key) {
+    timer = timer_read();
+    key_buffer[...] = record;            <span class="c">// press of a trigger: buffer it, wait</span>
+} else {
+    if (combo_buffer_read != combo_buffer_write) {
+        apply_combos();                  <span class="g">← RELEASE of a trigger fires the combo NOW</span>
+    } else { dump_key_buffer(); }
+}
+
+<span class="c">// the ONLY thing that waits for combo_term is combo_task():</span>
+if (timer && timer_elapsed(timer) > longest_term) { apply_combos(); }   <span class="y">← fires if you keep holding</span></pre>
+<p class="note">So there are two ways the chord lands, and they race:</p>
+<table>
+  <tr><th>you…</th><th>the chord fires…</th><th>so combo_term 60 → 120…</th></tr>
+  <tr><td>release either trigger</td><td class="g">that instant</td><td class="g">no change at all</td></tr>
+  <tr><td>keep holding both</td><td class="y">after combo_term from the last trigger landing</td><td class="y">60 ms later</td></tr>
+</table>
+<p class="note"><b>And it never touches the hold duration you are actually fighting.</b> How long you must keep both keys
+down is set by <span class="mono">tapping_term</span> — each trigger has to <i>resolve as a hold</i> before the combo
+matcher can see it at all, and that is 200 ms per key, untouched by QSID 2.</p>
+<details><summary>The one thing that <i>is</i> gated by combo_term</summary>
+<pre><span class="c">// process_combo.c:481 — checked the instant the SECOND trigger's press is delivered</span>
+if (timer && timer_elapsed(timer) > time) { DISABLE_COMBO(combo); return; }
+
+<span class="c">// and :621 resets the timer on every combo-key press, so at that moment:</span>
+elapsed == the gap between the two triggers' <b>deliveries</b> == your finger skew</pre>
+<p class="note">This is the only thing raising the number buys you: <b>two triggers may land up to
+<span class="mono">combo_term</span> apart instead of 60 ms apart</b>. A chord your fingers delivered 90 ms apart is dead
+at 60 and alive at 120. It is a tolerance dial, not a speed dial.</p>
+</details>
+</section>
+
+<!-- ==================================================== Q2 -->
+<section id="q2">
+<h2>Q2 — doesn't the diagram show chordal always winning? I'd get j/k every time</h2>
+<div class="lead"><div class="n bad">✗</div><div>
+<b>The diagram was wrong and your reading of it is right.</b> Chordal hold is not a gate that runs <i>before</i> the
+others — it is a branch that lives <b>inside</b> the within-tapping-term block, so it literally cannot run once the term
+expires.
+</div></div>
+<pre><span class="c">// action_tapping.c, the structure that decides everything here</span>
+275  if (WITHIN_TAPPING_TERM(event) || MAYBE_RETRO_SHIFTING(event, keyp)) {
+284      own-key release              → <span class="r">tap</span>          <span class="c">// :284  "First tap(0-&gt;1)"</span>
+316      chordal  + typed buffer      → <span class="r">force taps</span>    <span class="c">// :316  "Chord considered a tap"</span>
+349      permissive hold              → <span class="g">hold</span>         <span class="c">// :349  "No tap. Interfered by typing"</span>
+     }
+515  else {   // <span class="g">AFTER TAPPING_TERM</span>
+517      if (tapping_key.tap.count == 0) {
+519          process_record(&amp;tapping_key);       <span class="g">→ HOLD.  chordal is never consulted.</span></pre>
+<p class="note"><b>Therefore:</b> hold both keys past <span class="mono">tapping_term</span> and
+<span class="mono">get_chordal_hold()</span> is never called for that resolution — board A and board B behave
+<i>identically</i>. That is exactly why you are not always getting j/k, and why "hold past a threshold and it works" works
+on the chordal-on board too.</p>
+<p class="note">Within the term, two more things come before chordal, which is why the failure is subtler than
+"chordal wins":</p>
+<table>
+  <tr><th>your release order (inside the term)</th><th>branch</th><th>result</th><th>chordal involved?</th></tr>
+  <tr><td>release <b>first</b> key (r1c) first</td><td class="mono">:284</td><td class="r">j, then k</td><td class="y">no — plain tap resolution</td></tr>
+  <tr><td>release <b>second</b> key (r2c) first</td><td class="mono">:316</td><td class="r">j + k</td><td class="r">yes — this is the only chordal bite</td></tr>
+  <tr><td>hold past the term</td><td class="mono">:519</td><td class="g">both hold → combo can fire</td><td class="g">no</td></tr>
+</table>
+<p class="note">Which means the A↔B difference is <b>narrower than "chordal on = j/k"</b>: it shows up for the
+release-the-second-key-first ordering. The other early-release ordering loses on both boards. That is a correction to
+the outcome matrix in the main report.</p>
+</section>
+
+<!-- ==================================================== CLOCKS -->
+<section id="clocks">
+<h2>The two clocks, drawn — 40 ms chord, held to the end</h2>
+<div class="lanes">
+  <div class="lane"><span>r1c MT(CS|J)</span><div class="track">
+    <div class="bar b-wait" style="left:1%;width:56%">press swallowed</div><div class="bar b-hold" style="left:57%;width:42%">HOLD delivered → combo sees J</div></div></div>
+  <div class="lane"><span>r2c MT(SG|K)</span><div class="track">
+    <div class="bar b-wait" style="left:11%;width:55%">swallowed (queued)</div><div class="bar b-hold" style="left:66%;width:33%">HOLD → combo sees K</div></div></div>
+  <div class="lane"><span>skew window</span><div class="track">
+    <div class="bar b-win" style="left:57%;width:9%">40</div><div class="bar b-dead" style="left:66.5%;width:33%">deadline = combo_term, measured here</div></div></div>
+  <div class="lane"><span>chordal (:316)</span><div class="track">
+    <div class="bar b-dead" style="left:1%;width:56%;opacity:.5">can only run in this region</div><div class="bar" style="left:57%;width:42%;background:#151b25;color:#4b5566">term expired — never called</div></div></div>
+  <div class="scale"><div>0–350 ms</div><div><span>0</span><span>70</span><span>140</span><span>210</span><span>280</span><span>350</span></div></div>
+</div>
+<pre>press r1c  t=0     tapping_key = r1c            <span class="c">// press swallowed, nothing downstream yet</span>
+press r2c  t=40    interrupted=false, no force-tap (MT+MT), <span class="c">queued</span>
+tick       t=200   r1c term expired  → <span class="g">HOLD J delivered</span>   timer = 200
+                   r2c dequeues      → tapping_key = r2c
+tick       t=240   r2c term expired  → <span class="g">HOLD K delivered</span>   elapsed = 240-200 = <b>40</b> ≤ combo_term ✓
+                   all triggers down → combo <span class="k">buffered</span>, timer reset to 240
+you        t=250   <span class="g">release either one → apply_combos() → HYPR right now</span>
+   …or keep holding → combo_task() fires it at 240 + combo_term
+
+<span class="y">the skew that is tested is 40 ms — the gap between your two FINGERS, re-measured at delivery</span></pre>
+<details><summary>Why a typed "jk" can never chord, at any combo_term</summary>
+<pre>tap resolution delivers press <b>and</b> release back to back:
+  r1c tap  → process_combo sees MT(CS|J) press, then release → KEY_STATE_UP clears bit 0
+  r2c tap  → process_combo sees MT(SG|K) press → ALL_COMBO_KEYS_ARE_DOWN? <span class="r">bit 0 already up → no</span>
+
+<span class="g">⇒ a combo only ever forms between two keys that are simultaneously HELD down as holds.</span>
+<span class="g">⇒ raising combo_term does not turn fast typing into chords on this board, because every</span>
+<span class="g">   trigger in the 50-slot table is a mod-tap or layer-tap.</span></pre>
+</details>
+</section>
+
+<!-- ==================================================== TRADEOFF -->
+<section id="tradeoff">
+<h2>So what does 60 → 120 actually cost?</h2>
+<table>
+  <tr><th>cost</th><th>real?</th><th>why</th></tr>
+  <tr><td>you must hold longer</td><td><span class="tag t-good">no</span></td><td>release flushes the prepared combo immediately (<span class="mono">:634</span>)</td></tr>
+  <tr><td>fast typing turns into chords</td><td><span class="tag t-good">no</span></td><td>a tap delivers press+release atomically; the first trigger's bit is up before the second lands. Needs two simultaneous <i>holds</i></td></tr>
+  <tr><td>held-but-not-yet-fired chord is delayed</td><td><span class="tag t-warn">yes, 60 ms</span></td><td>only the <span class="mono">combo_task()</span> path, i.e. if you keep holding instead of releasing</td></tr>
+  <tr><td>trigger keys' events sit in <span class="mono">key_buffer</span> longer</td><td><span class="tag t-warn">yes, small</span></td><td>nothing downstream of the combo matcher runs until it resolves or dumps — but that window ends the moment you release</td></tr>
+  <tr><td>a late-but-deliberate chord that is <i>currently</i> dead starts working</td><td><span class="tag t-good">yes — the point</span></td><td>skew tolerance 60 → 120 ms</td></tr>
+</table>
+<p class="note"><b>Net:</b> on a board where every combo trigger is a tap-hold, this dial is close to free. My original
+framing — "costs latency on every combo trigger key" — overstated it, and "the only runtime dial that acts on the gate"
+understated how narrow that gate is: it is <b>finger skew</b>, and only for chords that are held long enough to resolve
+as holds in the first place.</p>
+</section>
+
+<!-- ==================================================== RECIPE -->
+<section id="recipe">
+<h2>Recipe, in the order that matches the two clocks</h2>
+<pre><span class="k">1</span>  <span class="cmd">just py-set 2 120</span>          <span class="c">combo_term — widens finger-skew tolerance. free-ish.</span>
+<span class="k">2</span>  <span class="cmd">just py-set 26 0</span>           <span class="c">chordal off — only affects the :316 ordering, inside the term.</span>
+<span class="k">3</span>  technique: press both, <b>keep both down past ~200 ms</b>, then release.
+       <span class="g">release is what fires it — you are not waiting for a timer.</span>
+<span class="k">4</span>  if it still misfires, it is not timing: it is <b>overlap theft</b>
+       (ring finger on r3c completes combo[20] → BTN1 instead of HYPR).</pre>
+<p class="note"><b>What to watch for,</b> because it separates the remaining hypotheses cleanly: a stray mouse click means
+overlap theft or a too-early release of the <span class="mono">MT(CSAG|BTN1)</span> result; <span class="mono">j</span> and
+<span class="mono">k</span> mean you released inside the term; a lone <b>shift+GUI</b> means the second key resolved as a
+hold and the first did not; and <b>shift+GUI+3</b> means all of that plus layer 5 already on
+(<a class="intra" href="flow_tap_vs_chordal_hold.html#layers">l1s = 3 on layer 5</a>).</p>
+<p class="note">Still the cleanest fix for anything you need under time pressure: put the finished chord
+(<span class="mono">C_S_A_G(KC_3)</span>) on a cell that is empty <i>on that layer</i>, so no clock is involved at all.</p>
+</section>
+</div>
+</body>
+</html>
